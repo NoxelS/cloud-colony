@@ -1,12 +1,16 @@
 # Development Rules
 
-Adapted from the [Pi team's development rules](https://raw.githubusercontent.com/earendil-works/pi/refs/heads/main/AGENTS.md), tailored to cloud-colony. These instructions apply throughout this repository. Explicit user instructions take precedence; do not request confirmation again for work already authorized.
+## Conversational Style
 
-## Communication
-
-- State the result directly. Use concise technical language, concrete examples, and no filler or emojis.
-- Explain significant changes through the problem, resulting behavior, validation, and remaining limitations.
-- Distinguish implemented behavior from plans. Report a check as passed only after observing its result.
+- Keep answers short and concise
+- No emojis in commits, issues, PR comments, or code
+- No fluff or cheerful filler text (e.g., "Thanks @user" not "Thanks so much @user!")
+- Technical prose only, be direct
+- Use concise, clear, simple language. Define unavoidable jargon before using it.
+- Explain non-trivial designs and problems as: problem, concrete example or short trace, then solution. State why the solution is necessary and distinguish it from optional complexity.
+- Prefer concrete behavior and small illustrations over abstract summaries, dense terminology, or unexplained lists of changes.
+- When the user asks a question, answer it first before making edits or running implementation commands.
+- When responding to user feedback or an analysis, explicitly say whether you agree or disagree before saying what you changed.
 
 ## Repository Scope
 
@@ -101,9 +105,3 @@ VS Code's recommended Biome extension applies formatting and safe fixes on save 
 - Prefer updating the task's existing branch and PR. Review other PRs through diffs and refs without switching the user's checkout.
 - Describe the final behavior and relevant checks in the PR. Use structured API arguments or a temporary body file for multiline descriptions.
 - Container publication, repository settings, and hosted-service activation need separate verification; a configuration file or successful local test does not prove they ran.
-
-<!-- @bufferapp/cli skill — managed -->
-!buffer context
-
-For Buffer CLI tasks, use the live command output above. If the client did not expand it, run `buffer context` before selecting or executing CLI commands.
-<!-- /@bufferapp/cli skill — managed -->
