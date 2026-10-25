@@ -8,6 +8,8 @@ Use the Node.js version in [`.node-version`](.node-version) and the pnpm version
 
 ```sh
 pnpm install --frozen-lockfile
+cp -n .env.example .env
+chmod 600 .env
 pnpm dev
 ```
 
