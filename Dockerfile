@@ -9,7 +9,7 @@ RUN npm install --global "pnpm@${PNPM_VERSION}" \
     && pnpm install --frozen-lockfile
 COPY tsconfig.json tsconfig.build.json ./
 COPY src ./src
-RUN pnpm build
+RUN pnpm build && pnpm prune --prod
 
 FROM base AS runtime
 # Package managers are build tools; the runtime executes compiled JavaScript.
@@ -19,10 +19,11 @@ RUN rm -rf /usr/local/lib/node_modules /opt/yarn-* \
 ENV NODE_ENV=production
 ARG VCS_REF=unknown
 LABEL org.opencontainers.image.title="cloud-colony" \
-    org.opencontainers.image.description="Cloud colony Node.js bootstrap" \
+    org.opencontainers.image.description="Cloud colony hello world agent" \
     org.opencontainers.image.source="https://github.com/NoxelS/cloud-colony" \
     org.opencontainers.image.revision="${VCS_REF}"
 COPY --from=build --chown=node:node /app/dist ./dist
+COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --chown=node:node package.json ./package.json
 USER 1000:1000
 CMD ["node", "dist/index.js"]

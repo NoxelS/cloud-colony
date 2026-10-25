@@ -1,6 +1,6 @@
 # Development and delivery
 
-Self-hosted cloud agents with pi-durable, A2A communication, LiteLLM inference, and OpenShell governance are the intended direction. The current application is a TypeScript hello world; this bootstrap establishes the development and container delivery pipeline.
+The application is a minimal pi-durable agent using LiteLLM inference. Each run submits one hello world prompt, prints the model response, and closes the harness. Conversations use in-memory storage; they do not survive process exit. A2A communication and OpenShell governance remain planned.
 
 ## Development
 
@@ -10,14 +10,17 @@ Use the exact Node 24 LTS version in [`.node-version`](../.node-version) and the
 pnpm install --frozen-lockfile
 cp -n .env.example .env
 chmod 600 .env
+# Set LITELLM_BASE_URL and LITELLM_API_KEY in .env.
 pnpm dev
 ```
 
-The application prints `Hello from cloud-colony`. To run the production build:
+`pnpm dev` loads the optional `.env` from the repository root. Existing environment variables take precedence. `pnpm start` reads injected environment variables; it does not load `.env`. Set `LITELLM_BASE_URL` to the OpenAI-compatible API base URL (for example `https://litellm.example.com/v1`) and `LITELLM_API_KEY` to a LiteLLM key. The model ID is hardcoded to `qwen3.8-27b`; there is no model environment variable. A run allows up to 128 output tokens and a 30-second request timeout, with retries disabled.
+
+To run the production build:
 
 ```sh
 pnpm build
-pnpm start
+node --env-file=.env dist/index.js
 ```
 
 | Command                | Purpose                                                              |
@@ -33,7 +36,16 @@ pnpm start
 | `pnpm check:infra`     | Validate workflows and the Dockerfile using pinned linter containers |
 | `pnpm check:container` | Build and smoke-test the local container                             |
 
-The smoke test launches the compiled application and verifies its output and exit status. The container check verifies the packaged application separately. The container is a one-shot process and exits after printing its message.
+The smoke tests launch the compiled application against a local mock of LiteLLM, including streamed text, `.env` loading, invalid configuration, and provider rejection. They use synthetic credentials and never call the configured live provider. The container check runs the same mock and agent inside the image with external networking disabled.
+
+To run the container against LiteLLM, supply credentials at runtime:
+
+```sh
+docker build --tag cloud-colony:local .
+docker run --rm --env-file .env cloud-colony:local
+```
+
+The image runs as a non-root user and includes compiled code and production dependencies. `.env` is excluded from the build context.
 
 VS Code extension recommendations and formatter settings are included. Biome handles JavaScript, TypeScript, and JSON.
 
@@ -50,7 +62,7 @@ const baseUrl = process.env.LITELLM_BASE_URL;
 const apiKey = process.env.LITELLM_API_KEY;
 ```
 
-The application is still hello world; it does not invoke LiteLLM or require a key yet. The first provider integration should validate the required values before making requests and keep credentials out of logs.
+The agent validates both values before making requests to LiteLLM. It reports provider failures without logging credentials.
 
 `pnpm start` and the production container read only the environment provided at startup. They do not load `.env`. For a local container test, Docker can supply the file explicitly with `docker run --env-file .env <image>`.
 
@@ -95,4 +107,4 @@ After merging a release commit, wait for its `main` pipeline to finish successfu
 
 ## Next phase
 
-Add the first pi-durable agent, shared tools, durable A2A task handling, and OpenShell policies after the toolchain is established. Split code into workspace packages when there is a concrete shared library. Kubernetes deployment belongs with the first long-running agent service.
+Add persistent storage, shared tools, durable A2A task handling, and OpenShell policies when requested. Split code into workspace packages when there is a concrete shared library. Kubernetes deployment belongs with the first long-running agent service.

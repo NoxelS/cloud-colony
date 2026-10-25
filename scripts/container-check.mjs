@@ -77,8 +77,19 @@ const runArgs = [
 ];
 const version = docker([...runArgs, "node", "--version"], { capture: true, timeout: 30_000 });
 assert.equal(version, `v${nodeVersion}\n`, "Container must run the pinned Node version");
-const stdout = docker(runArgs, { capture: true, timeout: 30_000 });
-assert.equal(stdout, "Hello from cloud-colony\n", "Container must print the expected greeting");
+const fixture = fileURLToPath(new URL("../tests/fixtures/run-agent.mjs", import.meta.url));
+const stdout = docker(
+  [
+    ...runArgs.slice(0, -1),
+    "--mount",
+    `type=bind,src=${fixture},dst=/smoke-test.mjs,readonly`,
+    values.tag,
+    "node",
+    "/smoke-test.mjs",
+  ],
+  { capture: true, timeout: 30_000 },
+);
+assert.equal(stdout, "Hello world!\n", "Container must run the agent against a local mock LiteLLM");
 console.log(
   `Container smoke test passed: ${values.tag}${values.platform ? ` (${values.platform})` : ""}`,
 );
