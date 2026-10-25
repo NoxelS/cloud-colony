@@ -105,3 +105,7 @@ VS Code's recommended Biome extension applies formatting and safe fixes on save 
 - Prefer updating the task's existing branch and PR. Review other PRs through diffs and refs without switching the user's checkout.
 - Describe the final behavior and relevant checks in the PR. Use structured API arguments or a temporary body file for multiline descriptions.
 - Container publication, repository settings, and hosted-service activation need separate verification; a configuration file or successful local test does not prove they ran.
+
+## AGENTS.md File
+
+- Do not change the AGENTS.md file unsless specifically asked for.
