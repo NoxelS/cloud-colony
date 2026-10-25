@@ -1,0 +1,80 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":semanticCommits",
+    "helpers:pinGitHubActionDigests",
+    "docker:pinDigests"
+  ],
+  "automerge": false,
+  "separateMajorMinor": true,
+  "separateMultipleMajor": true,
+  "packageRules": [
+    {
+      "description": "Group non-major development dependency updates.",
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "groupName": "development dependencies"
+    },
+    {
+      "description": "Group non-major GitHub Actions updates.",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "groupName": "GitHub Actions"
+    },
+    {
+      "description": "Group non-major container image updates.",
+      "matchManagers": ["dockerfile"],
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "groupName": "container images"
+    },
+    {
+      "description": "Group non-major infrastructure tool image updates.",
+      "matchManagers": ["custom.regex"],
+      "matchDatasources": ["docker"],
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "groupName": "infrastructure images",
+      "pinDigests": true
+    },
+    {
+      "description": "Update local, CI, and container Node runtime pins together.",
+      "matchPackageNames": ["node"],
+      "groupName": "Node.js runtime",
+      "groupSlug": "nodejs-runtime"
+    },
+    {
+      "description": "Update packageManager and Dockerfile pnpm pins together.",
+      "matchPackageNames": ["pnpm"],
+      "groupName": "pnpm",
+      "groupSlug": "pnpm"
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^scripts/tool-images\\.json$/"],
+      "matchStrings": [
+        "\"(?<depName>[^\"\\s:]+):(?<currentValue>[^\"@\\s]+)(?:@(?<currentDigest>sha256:[a-f0-9]+))?\""
+      ],
+      "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^Dockerfile$/"],
+      "matchStrings": [
+        "# renovate: datasource=npm depName=pnpm\\s+ARG PNPM_VERSION=(?<currentValue>[^\\s]+)"
+      ],
+      "depNameTemplate": "pnpm",
+      "datasourceTemplate": "npm"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
+      "matchStrings": [
+        "(?:image: |driver-opts: image=)(?<depName>moby/buildkit|tonistiigi/binfmt):(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]{64})"
+      ],
+      "datasourceTemplate": "docker"
+    }
+  ],
+  "minimumReleaseAge": "3 days"
+}
