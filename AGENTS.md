@@ -47,6 +47,38 @@ Run commands from the repository root. Docker must be available for infrastructu
 - Keep default tests deterministic and independent of external credentials. Future live-model tests need explicit opt-in and bounded cost; the presence of a key in the environment must not activate them.
 - Inspect complete failure output, fix the cause, and report any check that could not run. Do not add retries, exclusions, or suppressions merely to obtain a green result.
 
+## Development Workflow
+
+Agents must run formatting and the applicable checks as part of an authorized change, without waiting for a separate request to lint or test.
+1. Confirm the pinned Node and pnpm versions and inspect `git status`. Run `pnpm install --frozen-lockfile` when setting up a checkout or when dependencies change.
+2. Make a small change. Use `pnpm dev` when source watching helps; it does not replace type checking or tests.
+3. Apply Biome's formatting, import organization, and safe lint fixes to edited files. For example:
+
+   ```sh
+   pnpm exec biome check --write src/index.ts
+   ```
+
+   Pass the actual files you edited. For a repository-wide change, `pnpm format` applies the same fixes across the repository. Inspect the resulting diff and keep unrelated changes out of the task. Do not use `--unsafe` to clear diagnostics; resolve remaining issues deliberately.
+4. Run affected tests while iterating. The current smoke test executes compiled JavaScript, so build before a focused run:
+
+   ```sh
+   pnpm build
+   pnpm exec vitest run tests/smoke.test.ts
+   ```
+
+   Rebuild after source changes so a passing smoke test cannot come from stale `dist/` output.
+5. Before committing code, tests, or tooling configuration, run `pnpm check`. It checks Biome without modifying files, checks types, builds, and runs the full local test suite. A successful run already covers `pnpm build` and `pnpm test`; do not repeat them unnecessarily. Fix failures and rerun affected checks until they pass.
+6. For infrastructure changes, also run `pnpm check:infra` and the affected container checks. Docker/runtime changes should exercise both supported platforms:
+
+   ```sh
+   pnpm check:container --platform linux/amd64
+   pnpm check:container --platform linux/arm64
+   ```
+
+7. Review `git diff`, run `git diff --check`, and inspect `git status` before staging explicit paths. For documentation-only edits, use Biome on the edited documentation, verify its commands and links, and check the diff; application builds and tests are unnecessary locally.
+
+VS Code's recommended Biome extension applies formatting and safe fixes on save for the configured languages. Agents must still run the command-line checks; editor automation and a running `pnpm dev` process do not prove validation passed.
+
 ## Dependencies
 
 - Use pnpm and commit intentional `pnpm-lock.yaml` changes. To update dependencies, change the relevant metadata, regenerate with `pnpm install`, and verify a frozen-lockfile installation.
