@@ -8,6 +8,8 @@ Use the exact Node 24 LTS version in `.node-version` and the pnpm version in the
 
 ```sh
 pnpm install --frozen-lockfile
+cp -n .env.example .env
+chmod 600 .env
 pnpm dev
 ```
 
@@ -34,6 +36,50 @@ pnpm start
 The smoke test launches the compiled application and verifies its output and exit status. The container check verifies the packaged application separately. The container is a one-shot process and exits after printing its message.
 
 VS Code extension recommendations and formatter settings are included. Biome handles JavaScript, TypeScript, and JSON.
+
+## Environment configuration
+
+Development loads the optional root `.env` through Node's built-in `--env-file-if-exists` support in `pnpm dev`. Fill in `LITELLM_BASE_URL` (including `/v1`) and `LITELLM_API_KEY` in your local file. Existing shell/environment values take precedence. Restart `pnpm dev` after changing `.env`.
+
+`.env` is ignored by Git and excluded from Docker builds. `.env.example` contains the variable names and a local endpoint placeholder; it must never contain real credentials. CI tests use temporary fixtures and dummy keys.
+
+Application code reads the same environment interface in either mode:
+
+```ts
+const baseUrl = process.env.LITELLM_BASE_URL;
+const apiKey = process.env.LITELLM_API_KEY;
+```
+
+The application is still hello world; it does not invoke LiteLLM or require a key yet. The first provider integration should validate the required values before making requests and keep credentials out of logs.
+
+`pnpm start` and the production container read only the environment provided at startup. They do not load `.env`. For a local container test, Docker can supply the file explicitly with `docker run --env-file .env <image>`.
+
+In Kubernetes, put non-secret settings in a ConfigMap:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloud-colony-config
+data:
+  LITELLM_BASE_URL: https://litellm.example.com/v1
+```
+
+Use these entries in the future workload's container specification:
+
+```yaml
+envFrom:
+  - configMapRef:
+      name: cloud-colony-config
+env:
+  - name: LITELLM_API_KEY
+    valueFrom:
+      secretKeyRef:
+        name: cloud-colony-litellm
+        key: api-key
+```
+
+Create `cloud-colony-litellm` through your secret-management workflow. The API key belongs in a Secret, while the endpoint belongs in the ConfigMap. Kubernetes injects both into the process environment; the application does not call the Kubernetes API or read YAML. Restart or roll out the workload when those environment-backed values change. These are configuration examples, not a deployed workload.
 
 ## Containers and releases
 
