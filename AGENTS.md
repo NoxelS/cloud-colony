@@ -83,14 +83,6 @@ Agents must run formatting and the applicable checks as part of an authorized ch
 
 VS Code's recommended Biome extension applies formatting and safe fixes on save for the configured languages. Agents must still run the command-line checks; editor automation and a running `pnpm dev` process do not prove validation passed.
 
-## Environment Configuration
-
-- `pnpm dev` loads the optional root `.env` using Node's built-in loader. Existing process environment variables override file values; restart development after changing the file.
-- Keep `.env` local and ignored. Track variable names and non-secret placeholders in `.env.example`; preserve an existing local file when setting up a checkout.
-- Production uses injected environment variables only. LiteLLM code will read `process.env.LITELLM_BASE_URL` and `process.env.LITELLM_API_KEY` in either mode.
-- Kubernetes supplies the endpoint through a ConfigMap and the API key through a Secret. Keep actual credentials out of ConfigMaps, source, images, logs, and test output.
-- Test environment loading with temporary fixture directories and dummy values. Tests must not read the developer's `.env` or make model requests.
-
 ## Dependencies
 
 - Use pnpm and commit intentional `pnpm-lock.yaml` changes. To update dependencies, change the relevant metadata, regenerate with `pnpm install`, and verify a frozen-lockfile installation.
@@ -113,3 +105,7 @@ VS Code's recommended Biome extension applies formatting and safe fixes on save 
 - Prefer updating the task's existing branch and PR. Review other PRs through diffs and refs without switching the user's checkout.
 - Describe the final behavior and relevant checks in the PR. Use structured API arguments or a temporary body file for multiline descriptions.
 - Container publication, repository settings, and hosted-service activation need separate verification; a configuration file or successful local test does not prove they ran.
+
+## AGENTS.md File
+
+- Do not change the AGENTS.md file unsless specifically asked for.
