@@ -102,6 +102,4 @@ CI discovers agents under `src/agents/`. Each agent has its own job that builds,
 ghcr.io/noxels/cloud-colony:sha-<full-commit-sha>
 ```
 
-Coordinated release tags such as `v0.1.0` promote every agent's existing commit digest to its version tag and create one GitHub release after all promotions succeed. The hello-world image keeps the repository `ghcr.io/noxels/cloud-colony`. The release workflow checks that the tag belongs to `main` and that the commit's main CI run succeeded; it reuses image digests instead of rebuilding.
-
-After merging a release commit, wait for its `main` pipeline to finish successfully before creating a version tag. See [CONTRIBUTING.md](../CONTRIBUTING.md) for the release procedure and required repository setup.
+After a successful merge to `main`, CI automatically applies the next patch version to all agent images. For example, the hello-world image may be published as `ghcr.io/noxels/cloud-colony:v0.0.7` and `ghcr.io/noxels/cloud-colony:sha-<full-commit-sha>` with the same digest. CI then creates the Git tag and GitHub Release for that commit. See [CONTRIBUTING.md](../CONTRIBUTING.md) for version rules and retry behavior.
