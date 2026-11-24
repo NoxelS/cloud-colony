@@ -138,24 +138,48 @@ try {
     const send = (id, parts, messageId = id) =>
       rpc(id, "SendMessage", { message: { messageId, role: "ROLE_USER", parts } });
 
-    assert.ok((await send("invalid", [{ text: "Hello" }], "")).error);
-    assert.equal(requests, 0);
-    if (mode === "reject") {
-      const failure = await send("reject", [{ text: "Hello" }]);
-      assert.equal(failure.error.code, -32603);
-      const { result: taskList } = await rpc("list", "ListTasks", {});
-      assert.deepEqual(taskList.tasks ?? [], []);
-      assert.ok(!JSON.stringify(failure).includes(apiKey));
+    if (mode === "client") {
+      const client = spawn(process.execPath, ["dist/cli/a2a-client.js", origin], {
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      const clientClosed = once(client, "close");
+      const clientDeadline = setTimeout(() => client.kill("SIGKILL"), 4_000);
+      let output = "";
+      let errors = "";
+      client.stdout.setEncoding("utf8").on("data", (chunk) => {
+        output += chunk;
+      });
+      client.stderr.setEncoding("utf8").on("data", (chunk) => {
+        errors += chunk;
+      });
+      client.stdin.end("Hello\n\nHello again\n/quit\nIgnored\n");
+      try {
+        assert.deepEqual(await clientClosed, [0, null], errors);
+        assert.equal(output, "Hello world!\nHello world!\n");
+        assert.equal(requests, 2);
+      } finally {
+        clearTimeout(clientDeadline);
+      }
+    } else {
+      assert.ok((await send("invalid", [{ text: "Hello" }], "")).error);
+      assert.equal(requests, 0);
+      if (mode === "reject") {
+        const failure = await send("reject", [{ text: "Hello" }]);
+        assert.equal(failure.error.code, -32603);
+        const { result: taskList } = await rpc("list", "ListTasks", {});
+        assert.deepEqual(taskList.tasks ?? [], []);
+        assert.ok(!JSON.stringify(failure).includes(apiKey));
+      }
+      const replies = await Promise.all(
+        ["first-greeting", "second-greeting"].map((id) => send(id, [{ text: "Hello" }])),
+      );
+      for (const reply of replies) {
+        assert.equal(reply.result.message.role, "ROLE_AGENT");
+        assert.deepEqual(reply.result.message.parts, [{ text: "Hello world!" }]);
+      }
+      assert.notEqual(replies[0].result.message.messageId, replies[1].result.message.messageId);
+      assert.equal(requests, mode === "reject" ? 3 : 2);
     }
-    const replies = await Promise.all(
-      ["first-greeting", "second-greeting"].map((id) => send(id, [{ text: "Hello" }])),
-    );
-    for (const reply of replies) {
-      assert.equal(reply.result.message.role, "ROLE_AGENT");
-      assert.deepEqual(reply.result.message.parts, [{ text: "Hello world!" }]);
-    }
-    assert.notEqual(replies[0].result.message.messageId, replies[1].result.message.messageId);
-    assert.equal(requests, mode === "reject" ? 3 : 2);
     child.kill("SIGTERM");
     assert.deepEqual(await exited, [0, null]);
     assert.ok(!stderr.includes(apiKey), "Errors must not print credentials");

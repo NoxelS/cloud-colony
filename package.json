@@ -16,6 +16,7 @@
   "scripts": {
     "dev": "tsx watch --env-file-if-exists=.env src/agents/hello-world/index.ts",
     "build": "tsc --project tsconfig.build.json",
+    "a2a:client": "tsx src/cli/a2a-client.ts",
     "start": "node dist/agents/hello-world/index.js",
     "lint": "biome ci .",
     "format": "biome check --write .",

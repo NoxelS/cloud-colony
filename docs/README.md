@@ -81,6 +81,18 @@ curl -fsS http://127.0.0.1:8080/ \
 
 The response contains a greeting in `result.message.parts`. A model failure returns a JSON-RPC error. Greeting requests leave no task history. Both `/healthz` and `/readyz` report HTTP availability without calling the model. SIGTERM and SIGINT stop the listener and drain active HTTP requests.
 
+## Local A2A chat
+
+With Docker running and the repository dependencies installed, configure `.env` with the LiteLLM endpoint and key. Use `host.docker.internal` for a LiteLLM server running on the Docker Desktop host.
+
+```sh
+make hello-world-agent
+```
+
+The target builds the hello-world image, starts it on loopback, waits for readiness, and launches the interactive client. Enter a message to see the reply. Type `/quit`, press Ctrl+D, or press Ctrl+C to exit and stop the container.
+
+Use `make chat-<agent>` for any agent with a Dockerfile in `src/agents/<agent>/`. Override the local port or env file with `A2A_PORT=8081` or `ENV_FILE=path/to/file`. To chat with an agent that is already running, use `pnpm a2a:client http://127.0.0.1:8080`.
+
 ## Sisyphus rollout
 
 When deploying, run the published image by digest in a one-replica Deployment behind a private ClusterIP Service on port 8080. Set `A2A_BASE_URL` to that Service's origin, use the two HTTP probes, and allow at least 40 seconds for termination. Set `LITELLM_BASE_URL` to `http://litellm.litellm.svc.cluster.local:4000/v1` and inject a dedicated model-scoped `LITELLM_API_KEY` from a SOPS-managed Secret.

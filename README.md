@@ -18,4 +18,6 @@ The server listens on port 8080 by default. Discover it at `GET /.well-known/age
 
 `pnpm start` runs the compiled agent at `dist/agents/hello-world/index.js`; it reads injected environment variables and never loads `.env`. The image is `ghcr.io/noxels/cloud-colony`, built specifically for the `hello-world` agent.
 
+Run `make hello-world-agent` to build and start the container and chat with it from your terminal. Type `/quit` or press Ctrl+C to exit. Set `LITELLM_BASE_URL` in `.env` to an endpoint reachable from Docker.
+
 [Documentation](docs/README.md)
