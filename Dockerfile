@@ -8,7 +8,8 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN npm install --global "pnpm@${PNPM_VERSION}" \
     && pnpm install --frozen-lockfile
 COPY tsconfig.json tsconfig.build.json ./
-COPY src ./src
+COPY src/core ./src/core
+COPY src/agents/hello-world ./src/agents/hello-world
 RUN pnpm build && pnpm prune --prod
 
 FROM base AS agent-base
@@ -26,9 +27,8 @@ LABEL org.opencontainers.image.title="cloud-colony hello-world agent" \
     org.opencontainers.image.description="Hello-world agent using pi-durable and LiteLLM" \
     org.opencontainers.image.source="https://github.com/NoxelS/cloud-colony" \
     org.opencontainers.image.revision="${VCS_REF}"
-COPY --from=build --chown=node:node /app/dist/core ./dist/core
-COPY --from=build --chown=node:node /app/dist/agents/hello-world ./dist/agents/hello-world
-COPY --from=build --chown=node:node /app/node_modules ./node_modules
-COPY --chown=node:node package.json ./package.json
-USER 1000:1000
+COPY --from=build /app/dist/core ./dist/core
+COPY --from=build /app/dist/agents/hello-world ./dist/agents/hello-world
+COPY --from=build /app/node_modules ./node_modules
+COPY package.json ./package.json
 CMD ["node", "dist/agents/hello-world/index.js"]

@@ -1,6 +1,6 @@
 # Development and delivery
 
-The code has a shared internal library in `src/core` and runnable agents under `src/agents/<name>`. The first agent is a one-shot pi-durable example: it sends the prompt `Reply with exactly: Hello world!` to LiteLLM using hardcoded model ID `qwen3.8-27b`, prints the model response, and closes the harness. It uses in-memory storage, so conversations do not survive process exit. A2A communication and OpenShell governance remain future capabilities.
+The code has a shared internal library in `src/core` and runnable agents under `src/agents/<name>`. The first agent is a one-shot pi-durable example: it sends the prompt `Reply with exactly: Hello world!` to LiteLLM using hardcoded model ID `qwen3.8-27b`, prints the model response, and closes the harness. It uses in-memory storage, so conversations do not survive process exit. A2A communication remains a future capability.
 
 ## Development
 
@@ -40,11 +40,13 @@ The smoke tests launch the compiled application against a local mock of LiteLLM,
 To run the container against LiteLLM, supply credentials at runtime:
 
 ```sh
-docker build --tag cloud-colony:local .
-docker run --rm --env-file .env cloud-colony:local
+docker build --tag cloud-colony-hello-world-agent:local .
+docker run --rm --name cloud-colony-hello-world-agent-1 --env-file .env cloud-colony-hello-world-agent:local
 ```
 
-The image runs as a non-root user and includes compiled code and production dependencies. `.env` is excluded from the build context.
+Each container starts one agent process. Use a different container name for each concurrent instance. Set `LITELLM_BASE_URL` to an endpoint reachable from that container. If LiteLLM runs on the Mac host, use `host.docker.internal` in place of `localhost`.
+
+The image runs as a non-root user and includes compiled code and production dependencies owned by root. Supply the LiteLLM key when starting the container. `.env` is excluded from the build context.
 
 VS Code extension recommendations and formatter settings are included. Biome handles JavaScript, TypeScript, and JSON.
 
@@ -65,7 +67,7 @@ The agent validates both values before making requests to LiteLLM. It reports pr
 
 `pnpm start` and the production container read only the environment provided at startup. They do not load `.env`. For a local container test, Docker can supply the file explicitly with `docker run --env-file .env <image>`.
 
-In Kubernetes, put non-secret settings in a ConfigMap:
+Run hello-world as a Kubernetes Job because it exits after one request. Use a Deployment for agents designed to run continuously. Put non-secret settings in a ConfigMap:
 
 ```yaml
 apiVersion: v1
@@ -103,54 +105,3 @@ ghcr.io/noxels/cloud-colony:sha-<full-commit-sha>
 Coordinated release tags such as `v0.1.0` promote every agent's existing commit digest to its version tag and create one GitHub release after all promotions succeed. The hello-world image keeps the repository `ghcr.io/noxels/cloud-colony`. The release workflow checks that the tag belongs to `main` and that the commit's main CI run succeeded; it reuses image digests instead of rebuilding.
 
 After merging a release commit, wait for its `main` pipeline to finish successfully before creating a version tag. See [CONTRIBUTING.md](../CONTRIBUTING.md) for the release procedure and required repository setup.
-
-## OpenShell sandboxes
-
-The image is a workload, not an OpenShell installation. OpenShell runs it inside a separate sandbox controlled by a gateway and supervisor. Build the reusable runtime stage and the hello-world image locally. Future agent Dockerfiles can use the built base image as `FROM cloud-colony-agent-base:local`:
-
-```sh
-docker build --target agent-base -t cloud-colony-agent-base:local .
-docker build -t cloud-colony:local .
-```
-
-Install [OpenShell v0.1.10](https://docs.nvidia.com/openshell/v0.1.10/about/installation) and use a local Docker driver with Docker Engine 28 or later. Check `openshell status` and `openshell gateway info` before creating sandboxes. For the first sandbox, create a fresh local gateway or confirm that any existing gateway and its policy are safe to use; do not change a shared gateway's global policy. On Docker Desktop, OpenShell's default supervisor networking uses host mode, which requires host networking to be enabled. Otherwise configure `supervisor_network_mode = "bridge"` under `[openshell.drivers.docker]` in that gateway's TOML and restart it; the workload itself remains network-isolated.
-
-In one terminal, start a retained sandbox with its default interactive shell:
-
-```sh
-openshell sandbox create --name cloud-colony-check --from cloud-colony:local
-```
-
-In a second terminal, inspect the effective policy. The default policy is restrictive, but global or image policy and attached providers can add permissions; verify both payloads before interpreting a network test:
-
-```sh
-openshell policy get cloud-colony-check --base
-openshell policy get cloud-colony-check --full
-```
-
-Upload and run the existing deterministic fixture. It uses a local mock and synthetic API key; it does not call LiteLLM:
-
-```sh
-openshell sandbox upload cloud-colony-check tests/fixtures/run-agent.mjs /tmp/run-agent.mjs
-openshell sandbox exec -n cloud-colony-check --no-login-shell --workdir /app -- node /tmp/run-agent.mjs
-```
-
-With no broader network rule or provider override, test denied outbound access and inspect the supervisor event:
-
-```sh
-openshell sandbox exec -n cloud-colony-check --no-login-shell -- node -e 'fetch("https://example.com").then(() => process.exit(1)).catch(() => process.exit(0))'
-openshell logs cloud-colony-check --source sandbox
-openshell term
-```
-
-Require a `DENIED` network event; an unsuccessful request alone does not prove policy enforcement. OpenShell's TUI (`openshell term`) and logs expose sandbox activity, including allowed and denied connection events. Application stdout/stderr is separate container output. Gateway logs are an in-memory, limited buffer that can drop events and is lost on gateway restart or sandbox deletion, so this is not a durable audit trail. See NVIDIA's [architecture](https://docs.nvidia.com/openshell/v0.1.10/about/architecture), [log access](https://docs.nvidia.com/openshell/v0.1.10/observability/accessing-logs), [providers](https://docs.nvidia.com/openshell/v0.1.10/how-it-works/providers/overview), and [network rules](https://docs.nvidia.com/openshell/v0.1.10/how-it-works/policies/network-rules).
-
-For real LiteLLM access, configure a provider in the gateway for the exact LiteLLM hostname and port and bind `LITELLM_API_KEY` as a bearer credential for the Node executable. Attach that provider to each sandbox and pass only the non-secret `LITELLM_BASE_URL` with `--env-from`. A provider supplies a placeholder inside the sandbox and also contributes network access. Inspected-request rules need `enforcement: enforce`; audit is the default. Review the effective policy after attaching a provider. Never bake credentials into an image or pass them as ordinary `--env` values. Remote inference does not require a GPU in the agent container.
-
-Create one sandbox per agent, supply its actual main command after `--`, and set per-agent policy and resource limits when creating it. Do not install OpenShell or bake credentials and policy into the shared base image. Delete the test sandbox when finished:
-
-```sh
-openshell sandbox delete cloud-colony-check
-```
-
-For another agent, first add its `src/agents/<name>` entrypoint, agent-specific Dockerfile and mock fixture, then update all four explicit workflow lists (CI build/scan, platform publish, manifest publish, and release promotion), plus lint and Renovate coverage. See [CONTRIBUTING.md](../CONTRIBUTING.md).

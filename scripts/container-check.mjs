@@ -70,21 +70,38 @@ const runArgs = [
   "run",
   "--rm",
   ...platform,
-  "--read-only",
   "--network",
   "none",
   "--cap-drop",
   "ALL",
   "--security-opt",
   "no-new-privileges",
-  values.tag,
 ];
-const version = docker([...runArgs, "node", "--version"], { capture: true, timeout: 30_000 });
+const version = docker([...runArgs, "--read-only", values.tag, "node", "--version"], {
+  capture: true,
+  timeout: 30_000,
+});
 assert.equal(version, `v${nodeVersion}\n`, "Container must run the pinned Node version");
+docker(
+  [
+    ...runArgs,
+    values.tag,
+    "node",
+    "-e",
+    `const assert = require("node:assert/strict");
+     const { accessSync, constants } = require("node:fs");
+     for (const path of [".", "package.json", "dist", "node_modules"]) {
+       accessSync(path, constants.R_OK);
+       assert.throws(() => accessSync(path, constants.W_OK), { code: "EACCES" }, path);
+     }`,
+  ],
+  { capture: true, timeout: 30_000 },
+);
 const fixture = fileURLToPath(new URL(`../${values.fixture}`, import.meta.url));
 const stdout = docker(
   [
-    ...runArgs.slice(0, -1),
+    ...runArgs,
+    "--read-only",
     "--mount",
     `type=bind,src=${fixture},dst=/smoke-test.mjs,readonly`,
     values.tag,

@@ -23,7 +23,7 @@ Use a Conventional Commit PR title, for example `chore: bootstrap Node tooling` 
 
 ## Adding an agent
 
-Keep shared implementation in `src/core` only when it is concrete and reusable. Each additional agent belongs under `src/agents/<name>` and needs its own entrypoint, `src/agents/<name>/Dockerfile`, and deterministic mock fixture. Keep the root `Dockerfile` and `tests/fixtures/run-agent.mjs` as the hello-world implementation; new images must include only their own compiled agent and required core code. Add the agent Dockerfile to `scripts/lint-infra.mjs` coverage and the Dockerfile matcher in `renovate.json`.
+Keep shared implementation in `src/core` only when it is concrete and reusable. Each additional agent belongs under `src/agents/<name>` and needs its own entrypoint, `src/agents/<name>/Dockerfile`, and deterministic mock fixture. The root `Dockerfile` and `tests/fixtures/run-agent.mjs` build and test hello-world. Use its `agent-base` runtime stage as the reference for new images. Package the agent's compiled entrypoint, required core code, and production dependencies. Run the agent directly as a non-root user with root-owned application files. Keep new Dockerfiles covered by `scripts/lint-infra.mjs` and the Dockerfile matcher in `renovate.json`.
 
 Add one static agent/image/Dockerfile entry to each of these four workflow matrix lists:
 1. `.github/workflows/ci.yml` → `containers` build, scan, and tested-image artifact matrix (one row per agent and architecture).
