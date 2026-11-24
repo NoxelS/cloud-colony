@@ -5,7 +5,7 @@ import { expect, it } from "vitest";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 
-it.each(["success", "dotenv", "reject", "client"])(
+it.each(["success", "dotenv", "reject", "client", "trace"])(
   "serves A2A requests with a mock LiteLLM endpoint: %s",
   async (mode) => {
     const result = await promisify(execFile)(

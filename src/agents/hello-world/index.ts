@@ -1,13 +1,29 @@
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { BACKGROUND_CONTEXT, withTelemetry } from "@earendil-works/chord/context";
 import { createModels, createProvider, type Model } from "@earendil-works/pi-ai";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { AssistantEntry, createRegistry, Harness, MemoryStorage } from "@earendil-works/pi-durable";
 import { startA2aServer } from "../../core/a2a/server.js";
 import { createTextMessageHandler } from "../../core/a2a/text-message.js";
 import { readLiteLlmConfig } from "../../core/litellm-config.js";
+import { LensOtlpTelemetry } from "../../core/telemetry/lens-otlp.js";
+
+const systemInstructions = "Answer clearly and accurately.";
+const userMessage = "Reply with exactly: Hello world!";
+
+function textPart(content: string) {
+  return { type: "text", content };
+}
 
 async function main(): Promise<void> {
   const { baseUrl, apiKey } = readLiteLlmConfig(process.env);
+  const endpoint = process.env.LENS_OTLP_ENDPOINT?.trim();
+  const tracingKey = process.env.LITELLM_TRACING_KEY?.trim();
+  if (Boolean(endpoint) !== Boolean(tracingKey))
+    throw new Error("Set both LENS_OTLP_ENDPOINT and LITELLM_TRACING_KEY to enable tracing.");
+  const telemetry =
+    endpoint && tracingKey
+      ? new LensOtlpTelemetry(endpoint, tracingKey, "cloud-colony-hello-world")
+      : undefined;
 
   const model = {
     id: "qwen3.8-27b",
@@ -68,7 +84,22 @@ async function main(): Promise<void> {
     (card) =>
       createTextMessageHandler(card, async () => {
         try {
-          return await greet(models, model);
+          return telemetry
+            ? await telemetry.startSpan(
+                {
+                  name: "hello-world",
+                  attributes: {
+                    "gen_ai.operation.name": "invoke_agent",
+                    "gen_ai.agent.name": "hello-world",
+                    "gen_ai.system_instructions": JSON.stringify([textPart(systemInstructions)]),
+                    "gen_ai.input.messages": JSON.stringify([
+                      { role: "user", parts: [textPart(userMessage)] },
+                    ]),
+                  },
+                },
+                (span) => greet(models, model, withTelemetry(span, BACKGROUND_CONTEXT)),
+              )
+            : await greet(models, model);
         } catch {
           throw new Error("The greeting model did not answer.");
         }
@@ -80,12 +111,13 @@ async function main(): Promise<void> {
 async function greet(
   models: ReturnType<typeof createModels>,
   model: Model<"openai-completions">,
+  context = BACKGROUND_CONTEXT,
 ): Promise<string> {
-  const context = BACKGROUND_CONTEXT;
   const harness = await Harness.open(
     new MemoryStorage(),
     {
       models,
+      telemetry: context.telemetry,
       registry: createRegistry(),
       settings: { retry: { enabled: false }, stream: { timeoutMs: 30_000, maxRetries: 0 } },
     },
@@ -93,12 +125,13 @@ async function greet(
   );
   try {
     const conversation = await harness.root(context, {
-      agent: { model: { provider: model.provider, modelId: model.id }, thinkingLevel: "off" },
+      agent: {
+        model: { provider: model.provider, modelId: model.id },
+        thinkingLevel: "off",
+        instructions: systemInstructions,
+      },
     });
-    const submission = await conversation.submit(
-      { type: "input", content: "Reply with exactly: Hello world!" },
-      context,
-    );
+    const submission = await conversation.submit({ type: "input", content: userMessage }, context);
     const settled = await submission.wait(context);
     if (settled.status !== "done" || settled.type !== "input") {
       throw new Error("LiteLLM did not answer. Check the base URL, API key, and model access.");
@@ -117,6 +150,9 @@ async function greet(
             .trim()
         : "";
     if (!text) throw new Error("The agent returned no text.");
+    context.telemetry.setAttributes({
+      "gen_ai.output.messages": JSON.stringify([{ role: "assistant", parts: [textPart(text)] }]),
+    });
     return text;
   } finally {
     await harness.close(context);
