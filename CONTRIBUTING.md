@@ -27,7 +27,7 @@ Add `src/agents/<name>/index.ts`, `src/agents/<name>/Dockerfile`, and `tests/fix
 
 Use the hello-world Dockerfile as the reference. Build from the repository root, package the agent's compiled entrypoint, required shared code from `src/core`, and production dependencies. Run the agent directly as a non-root user with root-owned application files.
 
-CI, infrastructure linting, and releases discover agents from that layout. Adding an agent needs no workflow edits. Images use `ghcr.io/noxels/cloud-colony-<name>`, with hello-world retaining `ghcr.io/noxels/cloud-colony`. All agents share the repository's version tag and GitHub Release.
+CI, infrastructure linting, and releases discover agents from that layout. Adding an agent needs no workflow edits. Images use `ghcr.io/noxels/cloud-colony-<name>`. All agents share the repository's version tag and GitHub Release.
 
 ## Releases
 

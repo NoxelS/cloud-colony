@@ -20,10 +20,7 @@ export function listAgents(root) {
         throw new Error(`${name} requires ${file}`);
       }
     }
-    const image =
-      name === "hello-world"
-        ? "ghcr.io/noxels/cloud-colony"
-        : `ghcr.io/noxels/cloud-colony-${name}`;
+    const image = `ghcr.io/noxels/cloud-colony-${name}`;
     return { name, image, dockerfile, fixture };
   });
 }
