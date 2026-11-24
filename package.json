@@ -14,9 +14,9 @@
     "pnpm": "12.15.0"
   },
   "scripts": {
-    "dev": "tsx watch --env-file-if-exists=.env src/index.ts",
+    "dev": "tsx watch --env-file-if-exists=.env src/agents/hello-world/index.ts",
     "build": "tsc --project tsconfig.build.json",
-    "start": "node dist/index.js",
+    "start": "node dist/agents/hello-world/index.js",
     "lint": "biome ci .",
     "format": "biome check --write .",
     "typecheck": "tsc --project tsconfig.json --noEmit",

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
@@ -12,9 +12,15 @@ if (workflows.length === 0) {
   throw new Error("No GitHub Actions workflows found");
 }
 
+const dockerfiles = [
+  "Dockerfile",
+  ...readdirSync(new URL("../src/agents/", import.meta.url), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => `src/agents/${entry.name}/Dockerfile`),
+].filter((file) => existsSync(new URL(`../${file}`, import.meta.url)));
 for (const [name, files] of [
   ["actionlint", workflows],
-  ["hadolint", ["Dockerfile"]],
+  ["hadolint", dockerfiles],
 ]) {
   console.log(`Running ${name}`);
   const result = spawnSync(

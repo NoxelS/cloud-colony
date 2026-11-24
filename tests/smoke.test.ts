@@ -37,7 +37,7 @@ it.each([
 ])(
   "fails before making a request with invalid configuration: $message",
   ({ baseUrl, apiKey, message }) => {
-    const result = spawnSync(process.execPath, ["dist/index.js"], {
+    const result = spawnSync(process.execPath, ["dist/agents/hello-world/index.js"], {
       cwd: root,
       encoding: "utf8",
       env: { ...process.env, LITELLM_BASE_URL: baseUrl, LITELLM_API_KEY: apiKey },

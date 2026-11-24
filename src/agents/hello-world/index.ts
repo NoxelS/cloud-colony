@@ -2,18 +2,10 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createModels, createProvider, type Model } from "@earendil-works/pi-ai";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { AssistantEntry, createRegistry, Harness, MemoryStorage } from "@earendil-works/pi-durable";
+import { readLiteLlmConfig } from "../../core/litellm-config.js";
 
 async function main(): Promise<void> {
-  const baseUrl = process.env.LITELLM_BASE_URL?.trim();
-  const apiKey = process.env.LITELLM_API_KEY?.trim();
-  if (!baseUrl || !apiKey) {
-    throw new Error(
-      "Set LITELLM_BASE_URL and LITELLM_API_KEY in .env for development or the process environment.",
-    );
-  }
-  if (!URL.canParse(baseUrl) || !["http:", "https:"].includes(new URL(baseUrl).protocol)) {
-    throw new Error("LITELLM_BASE_URL must be an HTTP or HTTPS URL.");
-  }
+  const { baseUrl, apiKey } = readLiteLlmConfig(process.env);
 
   const model = {
     id: "qwen3.8-27b",

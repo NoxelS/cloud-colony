@@ -18,12 +18,13 @@ RUN rm -rf /usr/local/lib/node_modules /opt/yarn-* \
     /usr/local/bin/pnpm /usr/local/bin/pnpx /usr/local/bin/yarn /usr/local/bin/yarnpkg
 ENV NODE_ENV=production
 ARG VCS_REF=unknown
-LABEL org.opencontainers.image.title="cloud-colony" \
-    org.opencontainers.image.description="Cloud colony hello world agent" \
+LABEL org.opencontainers.image.title="cloud-colony hello-world agent" \
+    org.opencontainers.image.description="Hello-world agent using pi-durable and LiteLLM" \
     org.opencontainers.image.source="https://github.com/NoxelS/cloud-colony" \
     org.opencontainers.image.revision="${VCS_REF}"
-COPY --from=build --chown=node:node /app/dist ./dist
+COPY --from=build --chown=node:node /app/dist/core ./dist/core
+COPY --from=build --chown=node:node /app/dist/agents/hello-world ./dist/agents/hello-world
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --chown=node:node package.json ./package.json
 USER 1000:1000
-CMD ["node", "dist/index.js"]
+CMD ["node", "dist/agents/hello-world/index.js"]

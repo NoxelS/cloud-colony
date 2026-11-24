@@ -10,6 +10,8 @@ const { values } = parseArgs({
     platform: { type: "string" },
     tag: { type: "string", default: "cloud-colony:check" },
     "skip-build": { type: "boolean", default: false },
+    dockerfile: { type: "string", default: "Dockerfile" },
+    fixture: { type: "string", default: "tests/fixtures/run-agent.mjs" },
   },
 });
 
@@ -22,7 +24,7 @@ if (!values.tag || values.tag.startsWith("-")) {
 
 const nodeVersion = readFileSync(new URL("../.node-version", import.meta.url), "utf8").trim();
 const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
-const dockerfile = readFileSync(new URL("../Dockerfile", import.meta.url), "utf8");
+const dockerfile = readFileSync(new URL(`../${values.dockerfile}`, import.meta.url), "utf8");
 assert.equal(
   dockerfile.match(/^FROM node:(\d+\.\d+\.\d+)-bookworm-slim@sha256:[a-f0-9]{64} AS base$/m)?.[1],
   nodeVersion,
@@ -56,7 +58,9 @@ function docker(args, { capture = false, timeout = 120_000 } = {}) {
 
 const platform = values.platform ? ["--platform", values.platform] : [];
 if (!values["skip-build"]) {
-  docker(["build", ...platform, "--tag", values.tag, "."], { timeout: 600_000 });
+  docker(["build", ...platform, "--file", values.dockerfile, "--tag", values.tag, "."], {
+    timeout: 600_000,
+  });
 }
 const user = docker(["image", "inspect", "--format", "{{.Config.User}}", values.tag], {
   capture: true,
@@ -77,7 +81,7 @@ const runArgs = [
 ];
 const version = docker([...runArgs, "node", "--version"], { capture: true, timeout: 30_000 });
 assert.equal(version, `v${nodeVersion}\n`, "Container must run the pinned Node version");
-const fixture = fileURLToPath(new URL("../tests/fixtures/run-agent.mjs", import.meta.url));
+const fixture = fileURLToPath(new URL(`../${values.fixture}`, import.meta.url));
 const stdout = docker(
   [
     ...runArgs.slice(0, -1),

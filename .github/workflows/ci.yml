@@ -13,9 +13,6 @@ concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-env:
-  IMAGE: ghcr.io/noxels/cloud-colony
-
 jobs:
   quality:
     name: Application checks
@@ -67,13 +64,23 @@ jobs:
       - run: node scripts/lint-infra.mjs
 
   containers:
-    name: Container (${{ matrix.arch }})
+    name: Container (${{ matrix.agent }} / ${{ matrix.arch }})
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        arch: [amd64, arm64]
+        include:
+          - agent: hello-world
+            arch: amd64
+            image: ghcr.io/noxels/cloud-colony
+            dockerfile: Dockerfile
+            fixture: tests/fixtures/run-agent.mjs
+          - agent: hello-world
+            arch: arm64
+            image: ghcr.io/noxels/cloud-colony
+            dockerfile: Dockerfile
+            fixture: tests/fixtures/run-agent.mjs
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -93,22 +100,29 @@ jobs:
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
+          file: ${{ matrix.dockerfile }}
           platforms: linux/${{ matrix.arch }}
           load: true
-          tags: cloud-colony:ci-${{ matrix.arch }}
+          tags: ${{ matrix.image }}:${{ matrix.agent }}-${{ matrix.arch }}
           build-args: VCS_REF=${{ github.sha }}
           # Docker archives cannot preserve BuildKit attestations. Generate
           # attestations against the exact pushed digests in the publish jobs.
           provenance: false
           sbom: false
       - name: Smoke-test the built image
-        run: node scripts/container-check.mjs --platform "linux/$ARCH" --tag "cloud-colony:ci-$ARCH" --skip-build
+        run: node scripts/container-check.mjs --platform "linux/$ARCH" --tag "$IMAGE:$AGENT-$ARCH" --dockerfile "$DOCKERFILE" --fixture "$FIXTURE" --skip-build
         env:
           ARCH: ${{ matrix.arch }}
+          AGENT: ${{ matrix.agent }}
+          IMAGE: ${{ matrix.image }}
+          DOCKERFILE: ${{ matrix.dockerfile }}
+          FIXTURE: ${{ matrix.fixture }}
       - name: Save the tested image
         env:
           ARCH: ${{ matrix.arch }}
-        run: docker save "cloud-colony:ci-$ARCH" --output "$RUNNER_TEMP/image.tar"
+          AGENT: ${{ matrix.agent }}
+          IMAGE: ${{ matrix.image }}
+        run: docker save "$IMAGE:$AGENT-$ARCH" --output "$RUNNER_TEMP/image.tar"
       - name: Scan for fixable high and critical vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -135,7 +149,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: scan-${{ matrix.arch }}
+          name: scan-${{ matrix.agent }}-${{ matrix.arch }}
           path: ${{ runner.temp }}/vulnerabilities.json
           if-no-files-found: ignore
           retention-days: 14
@@ -143,7 +157,7 @@ jobs:
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: image-${{ matrix.arch }}
+          name: image-${{ matrix.agent }}-${{ matrix.arch }}
           path: |
             ${{ runner.temp }}/image.tar
             ${{ runner.temp }}/sbom.json
@@ -164,7 +178,7 @@ jobs:
           test "$RESULTS" = 'success,success,success'
 
   publish-platforms:
-    name: Publish tested image (${{ matrix.arch }})
+    name: Publish tested image (${{ matrix.agent }} / ${{ matrix.arch }})
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: ci
     runs-on: ubuntu-24.04
@@ -177,11 +191,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        arch: [amd64, arm64]
+        include:
+          - agent: hello-world
+            arch: amd64
+            image: ghcr.io/noxels/cloud-colony
+            dockerfile: Dockerfile
+          - agent: hello-world
+            arch: arm64
+            image: ghcr.io/noxels/cloud-colony
+            dockerfile: Dockerfile
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: image-${{ matrix.arch }}
+          name: image-${{ matrix.agent }}-${{ matrix.arch }}
           path: ${{ runner.temp }}/image
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         with:
@@ -196,36 +218,38 @@ jobs:
         id: push
         env:
           ARCH: ${{ matrix.arch }}
+          AGENT: ${{ matrix.agent }}
+          IMAGE: ${{ matrix.image }}
         run: |
           docker load --input "$RUNNER_TEMP/image/image.tar"
-          target="$IMAGE:sha-$GITHUB_SHA-$ARCH-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          docker tag "cloud-colony:ci-$ARCH" "$target"
+          target="$IMAGE:sha-$GITHUB_SHA-$AGENT-$ARCH-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          docker tag "$IMAGE:$AGENT-$ARCH" "$target"
           docker push "$target"
           digest="$(docker buildx imagetools inspect "$target" --format '{{json .Manifest}}' | jq -er '.digest')"
           [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
           printf 'digest=%s\n' "$digest" >> "$GITHUB_OUTPUT"
-          printf '%s\n' "$digest" > "$RUNNER_TEMP/digest-$ARCH"
+          printf '%s\n' "$digest" > "$RUNNER_TEMP/digest-$AGENT-$ARCH"
       - name: Attest image provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
-          subject-name: ${{ env.IMAGE }}
+          subject-name: ${{ matrix.image }}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
       - name: Attest image SBOM
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
-          subject-name: ${{ env.IMAGE }}
+          subject-name: ${{ matrix.image }}
           subject-digest: ${{ steps.push.outputs.digest }}
           sbom-path: ${{ runner.temp }}/image/sbom.json
           push-to-registry: true
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: digest-${{ matrix.arch }}
-          path: ${{ runner.temp }}/digest-${{ matrix.arch }}
+          name: digest-${{ matrix.agent }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digest-${{ matrix.agent }}-${{ matrix.arch }}
           retention-days: 3
 
   publish:
-    name: Publish commit manifest
+    name: Publish commit manifest (${{ matrix.agent }})
     needs: publish-platforms
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -234,10 +258,15 @@ jobs:
       packages: write
       attestations: write
       id-token: write
+    strategy:
+      matrix:
+        include:
+          - agent: hello-world
+            image: ghcr.io/noxels/cloud-colony
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: digest-*
+          pattern: digest-${{ matrix.agent }}-*
           merge-multiple: true
           path: ${{ runner.temp }}/digests
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
@@ -251,11 +280,12 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Assemble the multi-platform manifest
         id: manifest
+        env:
+          IMAGE: ${{ matrix.image }}
+          AGENT: ${{ matrix.agent }}
         run: |
           target="$IMAGE:sha-$GITHUB_SHA"
           if existing="$(docker buildx imagetools inspect "$target" --format '{{json .Manifest}}' 2>/dev/null)"; then
-            # Preserve the original digest on a rerun, including a run whose
-            # final attestation failed after the manifest was published.
             jq -e '[.manifests[].platform | .os + "/" + .architecture] | sort == ["linux/amd64", "linux/arm64"]' <<< "$existing"
             for arch in amd64 arm64; do
               platform_digest="$(jq -er --arg arch "$arch" '.manifests[] | select(.platform.architecture == $arch) | .digest' <<< "$existing")"
@@ -266,8 +296,8 @@ jobs:
             digest="$(jq -er '.digest' <<< "$existing")"
             echo 'Preserving the verified image already published for this commit.'
           else
-            amd64="$(cat "$RUNNER_TEMP/digests/digest-amd64")"
-            arm64="$(cat "$RUNNER_TEMP/digests/digest-arm64")"
+            amd64="$(cat "$RUNNER_TEMP/digests/digest-$AGENT-amd64")"
+            arm64="$(cat "$RUNNER_TEMP/digests/digest-$AGENT-arm64")"
             [[ "$amd64" =~ ^sha256:[a-f0-9]{64}$ ]]
             [[ "$arm64" =~ ^sha256:[a-f0-9]{64}$ ]]
             docker buildx imagetools create --tag "$target" "$IMAGE@$amd64" "$IMAGE@$arm64"
@@ -279,6 +309,6 @@ jobs:
       - name: Attest the published manifest
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
-          subject-name: ${{ env.IMAGE }}
+          subject-name: ${{ matrix.image }}
           subject-digest: ${{ steps.manifest.outputs.digest }}
           push-to-registry: true

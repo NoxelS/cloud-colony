@@ -8,7 +8,7 @@ import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 
 const mode = process.argv[2] ?? "success";
-const entrypoint = resolve("dist/index.js");
+const entrypoint = resolve("dist/agents/hello-world/index.js");
 const apiKey = "smoke-test-key";
 let requests = 0;
 const server = createServer(async (request, response) => {

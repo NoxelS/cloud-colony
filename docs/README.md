@@ -1,6 +1,6 @@
 # Development and delivery
 
-The application is a minimal pi-durable agent using LiteLLM inference. Each run submits one hello world prompt, prints the model response, and closes the harness. Conversations use in-memory storage; they do not survive process exit. A2A communication and OpenShell governance remain planned.
+The code has a shared internal library in `src/core` and runnable agents under `src/agents/<name>`. The first agent is a one-shot pi-durable example: it sends the prompt `Reply with exactly: Hello world!` to LiteLLM using hardcoded model ID `qwen3.8-27b`, prints the model response, and closes the harness. It uses in-memory storage, so conversations do not survive process exit. A2A communication and OpenShell governance remain future capabilities.
 
 ## Development
 
@@ -20,21 +20,20 @@ To run the production build:
 
 ```sh
 pnpm build
-node --env-file=.env dist/index.js
+node --env-file=.env dist/agents/hello-world/index.js
 ```
-
-| Command                | Purpose                                                              |
-| ---------------------- | -------------------------------------------------------------------- |
-| `pnpm dev`             | Run the application and watch for source changes                     |
-| `pnpm build`           | Compile application JavaScript into `dist/`                          |
-| `pnpm start`           | Execute the compiled application                                     |
-| `pnpm lint`            | Check formatting, imports, and lint rules with Biome                 |
-| `pnpm format`          | Apply formatting and safe fixes                                      |
-| `pnpm typecheck`       | Check application, test, and configuration types                     |
-| `pnpm test`            | Build and smoke-test the compiled entrypoint                         |
-| `pnpm check`           | Run linting, type checking, and tests                                |
-| `pnpm check:infra`     | Validate workflows and the Dockerfile using pinned linter containers |
-| `pnpm check:container` | Build and smoke-test the local container                             |
+| Command                | Purpose                                                                |
+| ---------------------- | ---------------------------------------------------------------------- |
+| `pnpm dev`             | Run the application and watch for source changes                       |
+| `pnpm build`           | Compile application JavaScript into `dist/`                            |
+| `pnpm start`           | Execute the compiled application                                       |
+| `pnpm lint`            | Check formatting, imports, and lint rules with Biome                   |
+| `pnpm format`          | Apply formatting and safe fixes                                        |
+| `pnpm typecheck`       | Check application, test, and configuration types                       |
+| `pnpm test`            | Build and smoke-test the compiled entrypoint                           |
+| `pnpm check`           | Run linting, type checking, and tests                                  |
+| `pnpm check:infra`     | Validate workflows and agent Dockerfiles with pinned linter containers |
+| `pnpm check:container` | Build and smoke-test the local container                               |
 
 The smoke tests launch the compiled application against a local mock of LiteLLM, including streamed text, `.env` loading, invalid configuration, and provider rejection. They use synthetic credentials and never call the configured live provider. The container check runs the same mock and agent inside the image with external networking disabled.
 
@@ -101,10 +100,12 @@ Pull requests run the application checks, infrastructure linting, and container 
 ghcr.io/noxels/cloud-colony:sha-<full-commit-sha>
 ```
 
-Release tags such as `v0.1.0` promote the existing commit image to a version tag and create a GitHub release. The release workflow checks that the tag belongs to `main` and that the commit's main CI run succeeded. It reuses the image digest instead of rebuilding it.
+Coordinated release tags such as `v0.1.0` promote every agent's existing commit digest to its version tag and create one GitHub release after all promotions succeed. The hello-world image keeps the repository `ghcr.io/noxels/cloud-colony`. The release workflow checks that the tag belongs to `main` and that the commit's main CI run succeeded; it reuses image digests instead of rebuilding.
 
 After merging a release commit, wait for its `main` pipeline to finish successfully before creating a version tag. See [CONTRIBUTING.md](../CONTRIBUTING.md) for the release procedure and required repository setup.
 
-## Next phase
+## Future isolation
 
-Add persistent storage, shared tools, durable A2A task handling, and OpenShell policies when requested. Split code into workspace packages when there is a concrete shared library. Kubernetes deployment belongs with the first long-running agent service.
+OpenShell is a future integration, not a property of the current image. NVIDIA's gateway Kubernetes driver creates the `Sandbox` resource and a supervisor pod; the Agent Sandbox controller creates the workload pod ([Kubernetes setup](https://docs.nvidia.com/openshell/latest/kubernetes/setup), [architecture](https://docs.nvidia.com/openshell/about/architecture)). The cluster CNI must enforce both ingress and egress NetworkPolicy. Before deployment, define least-privilege policy and approved egress, provision credentials safely, harden the runtime, and verify enforcement in the target cluster. Remote LiteLLM inference does not require a GPU in the agent container. No OpenShell isolation is installed or tested here.
+
+Add another agent only when it is implemented: give it a dedicated `src/agents/<name>` entrypoint, agent-specific Dockerfile and mock fixture, then update all four explicit workflow lists (CI build/scan, platform publish, manifest publish, and release promotion), plus lint and Renovate coverage. See [CONTRIBUTING.md](../CONTRIBUTING.md).

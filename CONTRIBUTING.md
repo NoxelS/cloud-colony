@@ -13,12 +13,25 @@ Keep application changes small and include checks that exercise observable behav
 ```sh
 pnpm check
 pnpm check:infra
-pnpm check:container
+pnpm check:container --platform linux/amd64
+pnpm check:container --platform linux/arm64
 ```
 
 The last two commands need a running Docker daemon. `pnpm format` applies formatting and safe fixes. Commit intentional changes to `pnpm-lock.yaml` when updating dependencies.
 
 Use a Conventional Commit PR title, for example `chore: bootstrap Node tooling` or `fix: preserve task identity after restart`. Prefer squash merging so the PR title becomes the commit message.
+
+## Adding an agent
+
+Keep shared implementation in `src/core` only when it is concrete and reusable. Each additional agent belongs under `src/agents/<name>` and needs its own entrypoint, `src/agents/<name>/Dockerfile`, and deterministic mock fixture. Keep the root `Dockerfile` and `tests/fixtures/run-agent.mjs` as the hello-world implementation; new images must include only their own compiled agent and required core code. Add the agent Dockerfile to `scripts/lint-infra.mjs` coverage and the Dockerfile matcher in `renovate.json`.
+
+Add one static agent/image/Dockerfile entry to each of these four workflow matrix lists:
+1. `.github/workflows/ci.yml` → `containers` build, scan, and tested-image artifact matrix (one row per agent and architecture).
+2. `.github/workflows/ci.yml` → `publish-platforms` matrix (one row per agent and architecture).
+3. `.github/workflows/ci.yml` → `publish` manifest matrix (one row per agent).
+4. `.github/workflows/release.yml` → `promote` matrix (one row per agent).
+
+The image needs its own GHCR repository except that hello-world retains `ghcr.io/noxels/cloud-colony`. Preserve the explicit architecture rows (`amd64`, `arm64`) for build and platform publication. Use agent-and-architecture-qualified tags, artifact names, and digest files so artifacts cannot collide. The manifest job must download only that agent's two digests. A new agent shares the coordinated semantic version tag and GitHub release; it does not get an independently versioned release.
 
 ## Releases
 

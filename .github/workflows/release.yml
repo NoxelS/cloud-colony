@@ -11,18 +11,15 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
-env:
-  IMAGE: ghcr.io/noxels/cloud-colony
-
 jobs:
-  release:
-    name: Promote tested image
+  source:
+    name: Verify release source
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
     permissions:
-      contents: write
+      contents: read
       actions: read
-      packages: write
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -45,17 +42,30 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_SHA: ${{ steps.source.outputs.sha }}
         run: |
-          # Tags can be pushed before the corresponding main run finishes.
           for attempt in $(seq 1 20); do
             count="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?event=push&head_sha=$RELEASE_SHA&status=success&per_page=100" --jq '[.workflow_runs[] | select(.head_branch == "main")] | length')"
-            if [ "$count" -gt 0 ]; then
-              exit 0
-            fi
+            if [ "$count" -gt 0 ]; then exit 0; fi
             printf 'Waiting for main CI (%s/20).\n' "$attempt"
             sleep 15
           done
-          echo '::error::No successful main CI run published this commit within five minutes. Wait for CI to pass, then rerun this release job.'
+          echo '::error::No successful main CI run published this commit within five minutes.'
           exit 1
+
+  promote:
+    name: Promote ${{ matrix.agent }} image
+    needs: source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - agent: hello-world
+            image: ghcr.io/noxels/cloud-colony
+    steps:
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         with:
           version: v0.38.1
@@ -66,9 +76,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Promote the existing digest
-        id: promote
         env:
-          RELEASE_SHA: ${{ steps.source.outputs.sha }}
+          IMAGE: ${{ matrix.image }}
+          RELEASE_SHA: ${{ needs.source.outputs.sha }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           source="$IMAGE:sha-$RELEASE_SHA"
@@ -77,25 +87,43 @@ jobs:
           [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
           if existing="$(docker buildx imagetools inspect "$target" --format '{{json .Manifest}}' 2>/dev/null | jq -er '.digest')"; then
             if [ "$existing" != "$digest" ]; then
-              echo '::error::This release version already points to a different image. Create a new version instead of overwriting it.'
+              echo '::error::This release version already points to a different image.'
               exit 1
             fi
           fi
           docker buildx imagetools create --tag "$target" "$IMAGE@$digest"
           promoted="$(docker buildx imagetools inspect "$target" --format '{{json .Manifest}}' | jq -er '.digest')"
           test "$promoted" = "$digest"
-          printf 'digest=%s\n' "$digest" >> "$GITHUB_OUTPUT"
-          printf 'Released %s@%s as %s.\n' "$IMAGE" "$digest" "$target" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Container: %s:%s\nDigest: %s@%s\n' "$IMAGE" "$RELEASE_TAG" "$IMAGE" "$digest" > "$RUNNER_TEMP/${{ matrix.agent }}.txt"
+          echo "Released $IMAGE@$digest as $target."
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-${{ matrix.agent }}
+          path: ${{ runner.temp }}/${{ matrix.agent }}.txt
+          retention-days: 3
+
+  release:
+    name: Create coordinated GitHub release
+    needs: [source, promote]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/images
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
-          RELEASE_SHA: ${{ steps.source.outputs.sha }}
-          IMAGE_DIGEST: ${{ steps.promote.outputs.digest }}
+          RELEASE_SHA: ${{ needs.source.outputs.sha }}
         run: |
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo 'GitHub release already exists; image digest was verified.'
+            echo 'GitHub release already exists; promoted image digests were verified.'
             exit 0
           fi
-          printf 'Container: %s:%s\n\nDigest: %s@%s\n' "$IMAGE" "$RELEASE_TAG" "$IMAGE" "$IMAGE_DIGEST" > "$RUNNER_TEMP/release-notes.md"
+          cat "$RUNNER_TEMP"/images/*.txt > "$RUNNER_TEMP/release-notes.md"
           gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --target "$RELEASE_SHA" --title "$RELEASE_TAG" --generate-notes --notes-file "$RUNNER_TEMP/release-notes.md"

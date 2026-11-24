@@ -15,9 +15,9 @@
 ## Repository Scope
 
 - Read `README.md`, `CONTRIBUTING.md`, and the relevant configuration before making changes. Inspect complete files before editing them.
-- The application currently consists of a TypeScript hello world. Keep this phase focused on development tooling, checks, containers, and delivery.
-- Pi-durable execution, A2A communication, LiteLLM inference, OpenShell governance, and Kubernetes deployment are planned capabilities. Implement them when requested, rather than assuming they already exist.
-- Keep one private package until a concrete shared library justifies workspace packages. Avoid speculative frameworks, empty package trees, and unused dependencies. Update this scope and the README as capabilities are introduced.
+- The application has a shared internal library in `src/core` and runnable agents under `src/agents/<name>`. The first agent is a one-shot pi-durable hello-world example using LiteLLM inference.
+- A2A communication, OpenShell governance, and Kubernetes deployment remain future capabilities; implement them only when requested.
+- Keep one private package. Add shared core APIs only for concrete reuse; do not introduce speculative frameworks, empty package trees, or unused dependencies.
 
 ## Implementation
 
@@ -32,20 +32,19 @@
 
 Run commands from the repository root. Docker must be available for infrastructure and container checks.
 
-| Command                          | When to use it                                                |
-| -------------------------------- | ------------------------------------------------------------- |
-| `pnpm install --frozen-lockfile` | Reproduce the committed dependency graph                      |
-| `pnpm dev`                       | Run the application with source watching                      |
-| `pnpm build`                     | Compile application JavaScript                                |
-| `pnpm start`                     | Run the existing production build                             |
-| `pnpm lint`                      | Check Biome formatting, imports, and lint rules               |
-| `pnpm format`                    | Apply formatting and safe fixes; review the resulting diff    |
-| `pnpm typecheck`                 | Check application, test, and configuration types              |
-| `pnpm test`                      | Build, then run Vitest; this is a local executable smoke test |
-| `pnpm check`                     | Run linting, type checking, and tests, including the build    |
-| `pnpm check:infra`               | Validate workflow YAML and the Dockerfile with pinned linters |
-| `pnpm check:container`           | Build and verify the local container                          |
-- For code, test, or TypeScript/tooling configuration changes, run `pnpm check`. For workflow, Dockerfile, or infrastructure-helper changes, also run `pnpm check:infra`; exercise affected container paths and architectures.
+| Command                          | When to use it                                                   |
+| -------------------------------- | ---------------------------------------------------------------- |
+| `pnpm install --frozen-lockfile` | Reproduce the committed dependency graph                         |
+| `pnpm dev`                       | Run the application with source watching                         |
+| `pnpm build`                     | Compile application JavaScript                                   |
+| `pnpm start`                     | Run the existing production build                                |
+| `pnpm lint`                      | Check Biome formatting, imports, and lint rules                  |
+| `pnpm format`                    | Apply formatting and safe fixes; review the resulting diff       |
+| `pnpm typecheck`                 | Check application, test, and configuration types                 |
+| `pnpm test`                      | Build, then run Vitest; this is a local executable smoke test    |
+| `pnpm check`                     | Run linting, type checking, and tests, including the build       |
+| `pnpm check:infra`               | Validate workflows and all agent Dockerfiles with pinned linters |
+| `pnpm check:container`           | Build and verify the hello-world container                       |
 - Documentation-only edits need formatting, command/link verification, and `git diff --check`; they do not require rebuilding the application locally. GitHub CI still runs according to its workflow triggers.
 - Run tests you change. Prefer tests of observable behavior, including the compiled executable, over assertions that merely repeat implementation details.
 - Keep default tests deterministic and independent of external credentials. Future live-model tests need explicit opt-in and bounded cost; the presence of a key in the environment must not activate them.
@@ -59,7 +58,7 @@ Agents must run formatting and the applicable checks as part of an authorized ch
 3. Apply Biome's formatting, import organization, and safe lint fixes to edited files. For example:
 
    ```sh
-   pnpm exec biome check --write src/index.ts
+   pnpm exec biome check --write src/agents/hello-world/index.ts
    ```
 
    Pass the actual files you edited. For a repository-wide change, `pnpm format` applies the same fixes across the repository. Inspect the resulting diff and keep unrelated changes out of the task. Do not use `--unsafe` to clear diagnostics; resolve remaining issues deliberately.

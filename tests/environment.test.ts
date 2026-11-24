@@ -25,11 +25,11 @@ async function run(
 ): Promise<unknown> {
   const directory = mkdtempSync(join(tmpdir(), "cloud-colony-env-"));
   directories.push(directory);
-  mkdirSync(join(directory, "src"));
-  mkdirSync(join(directory, "dist"));
+  mkdirSync(join(directory, "src/agents/hello-world"), { recursive: true });
+  mkdirSync(join(directory, "dist/agents/hello-world"), { recursive: true });
   writeFileSync(join(directory, "package.json"), '{"type":"module"}');
-  writeFileSync(join(directory, "src/index.ts"), probe);
-  writeFileSync(join(directory, "dist/index.js"), probe);
+  writeFileSync(join(directory, "src/agents/hello-world/index.ts"), probe);
+  writeFileSync(join(directory, "dist/agents/hello-world/index.js"), probe);
   if (options.dotenv !== undefined) {
     writeFileSync(join(directory, ".env"), options.dotenv);
   }
