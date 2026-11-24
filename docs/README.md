@@ -104,8 +104,53 @@ Coordinated release tags such as `v0.1.0` promote every agent's existing commit 
 
 After merging a release commit, wait for its `main` pipeline to finish successfully before creating a version tag. See [CONTRIBUTING.md](../CONTRIBUTING.md) for the release procedure and required repository setup.
 
-## Future isolation
+## OpenShell sandboxes
 
-OpenShell is a future integration, not a property of the current image. NVIDIA's gateway Kubernetes driver creates the `Sandbox` resource and a supervisor pod; the Agent Sandbox controller creates the workload pod ([Kubernetes setup](https://docs.nvidia.com/openshell/latest/kubernetes/setup), [architecture](https://docs.nvidia.com/openshell/about/architecture)). The cluster CNI must enforce both ingress and egress NetworkPolicy. Before deployment, define least-privilege policy and approved egress, provision credentials safely, harden the runtime, and verify enforcement in the target cluster. Remote LiteLLM inference does not require a GPU in the agent container. No OpenShell isolation is installed or tested here.
+The image is a workload, not an OpenShell installation. OpenShell runs it inside a separate sandbox controlled by a gateway and supervisor. Build the reusable runtime stage and the hello-world image locally. Future agent Dockerfiles can use the built base image as `FROM cloud-colony-agent-base:local`:
 
-Add another agent only when it is implemented: give it a dedicated `src/agents/<name>` entrypoint, agent-specific Dockerfile and mock fixture, then update all four explicit workflow lists (CI build/scan, platform publish, manifest publish, and release promotion), plus lint and Renovate coverage. See [CONTRIBUTING.md](../CONTRIBUTING.md).
+```sh
+docker build --target agent-base -t cloud-colony-agent-base:local .
+docker build -t cloud-colony:local .
+```
+
+Install [OpenShell v0.1.10](https://docs.nvidia.com/openshell/v0.1.10/about/installation) and use a local Docker driver with Docker Engine 28 or later. Check `openshell status` and `openshell gateway info` before creating sandboxes. For the first sandbox, create a fresh local gateway or confirm that any existing gateway and its policy are safe to use; do not change a shared gateway's global policy.
+
+In one terminal, start a retained sandbox with its default interactive shell:
+
+```sh
+openshell sandbox create --name cloud-colony-check --from cloud-colony:local
+```
+
+In a second terminal, inspect the effective policy. The default policy is restrictive, but global policy and attached providers can add permissions; verify both payloads before interpreting a network test:
+
+```sh
+openshell policy get cloud-colony-check --base
+openshell policy get cloud-colony-check --full
+```
+
+Upload and run the existing deterministic fixture. It uses a local mock and synthetic API key; it does not call LiteLLM:
+
+```sh
+openshell sandbox upload cloud-colony-check tests/fixtures/run-agent.mjs /tmp/run-agent.mjs
+openshell sandbox exec -n cloud-colony-check --no-login-shell --workdir /app -- node /tmp/run-agent.mjs
+```
+
+With no broader network rule or provider override, test denied outbound access and inspect the supervisor event:
+
+```sh
+openshell sandbox exec -n cloud-colony-check --no-login-shell -- node -e 'fetch("https://example.com").then(() => process.exit(1)).catch(() => process.exit(0))'
+openshell logs cloud-colony-check --source sandbox
+openshell term
+```
+
+Require a `DENIED` network event; an unsuccessful request alone does not prove policy enforcement. OpenShell's TUI (`openshell term`) and logs expose sandbox activity, including allowed and denied connection events. Application stdout/stderr is separate container output. Gateway logs are an in-memory, limited buffer that can drop events and is lost on gateway restart or sandbox deletion, so this is not a durable audit trail. See NVIDIA's [architecture](https://docs.nvidia.com/openshell/v0.1.10/about/architecture), [log access](https://docs.nvidia.com/openshell/v0.1.10/observability/accessing-logs), [providers](https://docs.nvidia.com/openshell/v0.1.10/how-it-works/providers/overview), and [network rules](https://docs.nvidia.com/openshell/v0.1.10/how-it-works/policies/network-rules).
+
+For real LiteLLM access, configure a provider in the gateway for the exact LiteLLM hostname and port and bind `LITELLM_API_KEY` as a bearer credential for the Node executable. Attach that provider to each sandbox and pass only the non-secret `LITELLM_BASE_URL` with `--env-from`. A provider supplies a placeholder inside the sandbox and also contributes network access. Inspected-request rules need `enforcement: enforce`; audit is the default. Review the effective policy after attaching a provider. Never bake credentials into an image or pass them as ordinary `--env` values. Remote inference does not require a GPU in the agent container.
+
+Create one sandbox per agent, supply its actual main command after `--`, and set per-agent policy and resource limits when creating it. Do not install OpenShell or bake credentials and policy into the shared base image. Delete the test sandbox when finished:
+
+```sh
+openshell sandbox delete cloud-colony-check
+```
+
+For another agent, first add its `src/agents/<name>` entrypoint, agent-specific Dockerfile and mock fixture, then update all four explicit workflow lists (CI build/scan, platform publish, manifest publish, and release promotion), plus lint and Renovate coverage. See [CONTRIBUTING.md](../CONTRIBUTING.md).
