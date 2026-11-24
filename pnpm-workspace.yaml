@@ -1,4 +1,7 @@
 engineStrict: true
 saveExact: true
 allowBuilds:
+  # Unused provider dependencies; reviewed scripts are unnecessary for LiteLLM.
+  "@google/genai": false
+  protobufjs: false
   esbuild: true

@@ -8,21 +8,29 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN npm install --global "pnpm@${PNPM_VERSION}" \
     && pnpm install --frozen-lockfile
 COPY tsconfig.json tsconfig.build.json ./
-COPY src ./src
-RUN pnpm build
+COPY src/core ./src/core
+COPY src/agents/hello-world ./src/agents/hello-world
+RUN pnpm build && pnpm prune --prod
 
-FROM base AS runtime
+FROM base AS agent-base
 # Package managers are build tools; the runtime executes compiled JavaScript.
-RUN rm -rf /usr/local/lib/node_modules /opt/yarn-* \
+RUN dpkg --purge apt libapt-pkg6.0 \
+    && rm -rf /usr/local/lib/node_modules /opt/yarn-* \
     /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
     /usr/local/bin/pnpm /usr/local/bin/pnpx /usr/local/bin/yarn /usr/local/bin/yarnpkg
 ENV NODE_ENV=production
+WORKDIR /app
+USER 1000:1000
+
+FROM agent-base AS runtime
 ARG VCS_REF=unknown
-LABEL org.opencontainers.image.title="cloud-colony" \
-    org.opencontainers.image.description="Cloud colony Node.js bootstrap" \
+LABEL org.opencontainers.image.title="cloud-colony hello-world agent" \
+    org.opencontainers.image.description="Hello-world A2A agent using pi-durable and LiteLLM" \
     org.opencontainers.image.source="https://github.com/NoxelS/cloud-colony" \
     org.opencontainers.image.revision="${VCS_REF}"
-COPY --from=build --chown=node:node /app/dist ./dist
-COPY --chown=node:node package.json ./package.json
-USER 1000:1000
-CMD ["node", "dist/index.js"]
+COPY --from=build /app/dist/core ./dist/core
+COPY --from=build /app/dist/agents/hello-world ./dist/agents/hello-world
+COPY --from=build /app/node_modules ./node_modules
+COPY package.json ./package.json
+EXPOSE 8080
+CMD ["node", "dist/agents/hello-world/index.js"]

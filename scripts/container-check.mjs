@@ -10,6 +10,8 @@ const { values } = parseArgs({
     platform: { type: "string" },
     tag: { type: "string", default: "cloud-colony:check" },
     "skip-build": { type: "boolean", default: false },
+    dockerfile: { type: "string", default: "src/agents/hello-world/Dockerfile" },
+    fixture: { type: "string", default: "tests/fixtures/hello-world.mjs" },
   },
 });
 
@@ -22,7 +24,7 @@ if (!values.tag || values.tag.startsWith("-")) {
 
 const nodeVersion = readFileSync(new URL("../.node-version", import.meta.url), "utf8").trim();
 const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
-const dockerfile = readFileSync(new URL("../Dockerfile", import.meta.url), "utf8");
+const dockerfile = readFileSync(new URL(`../${values.dockerfile}`, import.meta.url), "utf8");
 assert.equal(
   dockerfile.match(/^FROM node:(\d+\.\d+\.\d+)-bookworm-slim@sha256:[a-f0-9]{64} AS base$/m)?.[1],
   nodeVersion,
@@ -56,7 +58,9 @@ function docker(args, { capture = false, timeout = 120_000 } = {}) {
 
 const platform = values.platform ? ["--platform", values.platform] : [];
 if (!values["skip-build"]) {
-  docker(["build", ...platform, "--tag", values.tag, "."], { timeout: 600_000 });
+  docker(["build", ...platform, "--file", values.dockerfile, "--tag", values.tag, "."], {
+    timeout: 600_000,
+  });
 }
 const user = docker(["image", "inspect", "--format", "{{.Config.User}}", values.tag], {
   capture: true,
@@ -66,19 +70,46 @@ const runArgs = [
   "run",
   "--rm",
   ...platform,
-  "--read-only",
   "--network",
   "none",
   "--cap-drop",
   "ALL",
   "--security-opt",
   "no-new-privileges",
-  values.tag,
 ];
-const version = docker([...runArgs, "node", "--version"], { capture: true, timeout: 30_000 });
+const version = docker([...runArgs, "--read-only", values.tag, "node", "--version"], {
+  capture: true,
+  timeout: 30_000,
+});
 assert.equal(version, `v${nodeVersion}\n`, "Container must run the pinned Node version");
-const stdout = docker(runArgs, { capture: true, timeout: 30_000 });
-assert.equal(stdout, "Hello from cloud-colony\n", "Container must print the expected greeting");
+docker(
+  [
+    ...runArgs,
+    values.tag,
+    "node",
+    "-e",
+    `const assert = require("node:assert/strict");
+     const { accessSync, constants } = require("node:fs");
+     for (const path of [".", "package.json", "dist", "node_modules"]) {
+       accessSync(path, constants.R_OK);
+       assert.throws(() => accessSync(path, constants.W_OK), { code: "EACCES" }, path);
+     }`,
+  ],
+  { capture: true, timeout: 30_000 },
+);
+const fixture = fileURLToPath(new URL(`../${values.fixture}`, import.meta.url));
+docker(
+  [
+    ...runArgs,
+    "--read-only",
+    "--mount",
+    `type=bind,src=${fixture},dst=/smoke-test.mjs,readonly`,
+    values.tag,
+    "node",
+    "/smoke-test.mjs",
+  ],
+  { capture: true, timeout: 30_000 },
+);
 console.log(
   `Container smoke test passed: ${values.tag}${values.platform ? ` (${values.platform})` : ""}`,
 );

@@ -13,28 +13,27 @@ Keep application changes small and include checks that exercise observable behav
 ```sh
 pnpm check
 pnpm check:infra
-pnpm check:container
+pnpm check:container --platform linux/amd64
+pnpm check:container --platform linux/arm64
 ```
 
 The last two commands need a running Docker daemon. `pnpm format` applies formatting and safe fixes. Commit intentional changes to `pnpm-lock.yaml` when updating dependencies.
 
 Use a Conventional Commit PR title, for example `chore: bootstrap Node tooling` or `fix: preserve task identity after restart`. Prefer squash merging so the PR title becomes the commit message.
 
+## Adding an agent
+
+Add `src/agents/<name>/index.ts`, `src/agents/<name>/Dockerfile`, and `tests/fixtures/<name>.mjs`. Use lowercase letters, digits, and hyphens in the name. The smoke fixture should execute the compiled agent against a deterministic mock and exit nonzero on failure.
+
+Use the hello-world Dockerfile as the reference. Build from the repository root, package the agent's compiled entrypoint, required shared code from `src/core`, and production dependencies. Run the agent directly as a non-root user with root-owned application files.
+
+CI, infrastructure linting, and releases discover agents from that layout. Adding an agent needs no workflow edits. Images use `ghcr.io/noxels/cloud-colony-<name>`, with hello-world retaining `ghcr.io/noxels/cloud-colony`. All agents share the repository's version tag and GitHub Release.
+
 ## Releases
 
-The package is private; releases publish container images and GitHub release notes.
-1. Merge the intended changes to `main`.
-2. Fetch `origin/main` and wait for that exact commit's main CI run to succeed and publish its SHA image.
-3. Create an unused semantic version tag on the verified commit:
+Each merge to `main` gets the next patch version. After CI succeeds, the workflow applies the version to every tested image digest and creates the Git tag and GitHub Release. Rerun the same main workflow if a build or publication fails. A rerun uses the same version.
 
-   ```sh
-   git tag v0.1.0 origin/main
-   git push origin v0.1.0
-   ```
-
-4. Check the release workflow and confirm the version image digest matches the corresponding SHA image digest.
-
-Use the next intended version in place of `v0.1.0`. The release workflow verifies main ancestry and successful CI, promotes the existing multi-architecture image, and creates release notes. If main CI has not published the image yet, finish that run before retrying the release workflow.
+The version is based on the number of main commits since the last stable version tag. Before the first tag, the patch number counts main's history from the root commit. This keeps versions ordered by commit history when runs finish out of order, and a failed commit can leave a gap in the published versions.
 
 ## Repository setup
 
@@ -42,6 +41,7 @@ These are GitHub settings and service configuration, separate from files committ
 - Require the aggregate `ci` check on `main` and use pull requests for changes.
 - Enable squash merging and use Conventional Commit PR titles.
 - Allow the publishing workflow to write packages through `GITHUB_TOKEN`; keep default workflow permissions read-only.
+- Allow the release job to create `v*` Git tags and GitHub Releases through `GITHUB_TOKEN`.
 - Enable GitHub Actions and grant Renovate access to this repository if it is not already installed.
 - Choose the GHCR package visibility appropriate for the deployment environment. The workflow does not change package visibility.
 

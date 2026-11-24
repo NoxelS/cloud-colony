@@ -60,7 +60,7 @@
     },
     {
       "customType": "regex",
-      "managerFilePatterns": ["/^Dockerfile$/"],
+      "managerFilePatterns": ["/^src\\/agents\\/[^/]+\\/Dockerfile$/"],
       "matchStrings": [
         "# renovate: datasource=npm depName=pnpm\\s+ARG PNPM_VERSION=(?<currentValue>[^\\s]+)"
       ],
