@@ -16,7 +16,7 @@ pnpm dev
 
 The server listens on port 8080 by default. Discover it at `GET /.well-known/agent-card.json` and send an A2A `SendMessage` to the JSON-RPC URL advertised by the card. Each greeting uses a fresh in-memory conversation with the LiteLLM model `qwen3.8-27b`.
 
-`pnpm start` runs the compiled agent at `dist/agents/hello-world/index.js`; it reads injected environment variables and never loads `.env`. The image is `ghcr.io/noxels/cloud-colony`, built specifically for the `hello-world` agent.
+`pnpm start` runs the compiled agent at `dist/agents/hello-world/index.js`; it reads injected environment variables and never loads `.env`. The image is `ghcr.io/noxels/cloud-colony-hello-world`, built specifically for the `hello-world` agent.
 
 Run `make hello-world-agent` to build and start the container and chat with it from your terminal. Type `/quit` or press Ctrl+C to exit. Set `LITELLM_BASE_URL` in `.env` to an endpoint reachable from Docker.
 

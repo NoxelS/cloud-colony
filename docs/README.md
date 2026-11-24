@@ -129,7 +129,7 @@ Verify the agent through `GET /v1/agents` and `GET /a2a/hello-world/.well-known/
 CI discovers agents under `src/agents/`. Each agent has its own job that builds, smoke-tests, and vulnerability scans the `linux/amd64` and `linux/arm64` images. On `main`, the same job pushes both tested images and creates a multi-architecture tag. The hello-world image uses:
 
 ```text
-ghcr.io/noxels/cloud-colony:sha-<full-commit-sha>
+ghcr.io/noxels/cloud-colony-hello-world:sha-<full-commit-sha>
 ```
 
-After a successful merge to `main`, CI automatically applies the next patch version to all agent images. For example, the hello-world image may be published as `ghcr.io/noxels/cloud-colony:v0.0.7` and `ghcr.io/noxels/cloud-colony:sha-<full-commit-sha>` with the same digest. CI then creates the Git tag and GitHub Release for that commit. See [CONTRIBUTING.md](../CONTRIBUTING.md) for version rules and retry behavior.
+After a successful merge to `main`, CI automatically applies the next patch version to all agent images. For example, the hello-world image may be published as `ghcr.io/noxels/cloud-colony-hello-world:v0.0.7` and `ghcr.io/noxels/cloud-colony-hello-world:sha-<full-commit-sha>` with the same digest. CI then creates the Git tag and GitHub Release for that commit. See [CONTRIBUTING.md](../CONTRIBUTING.md) for version rules and retry behavior.

@@ -33,7 +33,7 @@ it("lists each agent with its own Dockerfile, smoke fixture and registry image",
   expect(JSON.parse(listAgents())).toEqual([
     {
       name: "hello-world",
-      image: "ghcr.io/noxels/cloud-colony",
+      image: "ghcr.io/noxels/cloud-colony-hello-world",
       dockerfile: "src/agents/hello-world/Dockerfile",
       fixture: "tests/fixtures/hello-world.mjs",
     },
