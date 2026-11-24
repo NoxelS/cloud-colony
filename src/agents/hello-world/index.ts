@@ -2,6 +2,8 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createModels, createProvider, type Model } from "@earendil-works/pi-ai";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { AssistantEntry, createRegistry, Harness, MemoryStorage } from "@earendil-works/pi-durable";
+import { startA2aServer } from "../../core/a2a/server.js";
+import { createTextMessageHandler } from "../../core/a2a/text-message.js";
 import { readLiteLlmConfig } from "../../core/litellm-config.js";
 
 async function main(): Promise<void> {
@@ -33,6 +35,52 @@ async function main(): Promise<void> {
     }),
   );
 
+  await startA2aServer(
+    {
+      name: "Hello World",
+      description: "Returns a model-generated hello-world greeting.",
+      version: "1.0.0",
+      provider: undefined,
+      capabilities: {
+        streaming: false,
+        pushNotifications: false,
+        extendedAgentCard: false,
+        extensions: [],
+      },
+      securitySchemes: {},
+      securityRequirements: [],
+      defaultInputModes: ["text/plain"],
+      defaultOutputModes: ["text/plain"],
+      signatures: [],
+      skills: [
+        {
+          id: "greet",
+          name: "Greet",
+          description: "Send a text message to receive a greeting.",
+          tags: ["greeting"],
+          examples: ["Hello"],
+          inputModes: ["text/plain"],
+          outputModes: ["text/plain"],
+          securityRequirements: [],
+        },
+      ],
+    },
+    (card) =>
+      createTextMessageHandler(card, async () => {
+        try {
+          return await greet(models, model);
+        } catch {
+          throw new Error("The greeting model did not answer.");
+        }
+      }),
+    process.env,
+  );
+}
+
+async function greet(
+  models: ReturnType<typeof createModels>,
+  model: Model<"openai-completions">,
+): Promise<string> {
   const context = BACKGROUND_CONTEXT;
   const harness = await Harness.open(
     new MemoryStorage(),
@@ -69,7 +117,7 @@ async function main(): Promise<void> {
             .trim()
         : "";
     if (!text) throw new Error("The agent returned no text.");
-    console.log(text);
+    return text;
   } finally {
     await harness.close(context);
   }

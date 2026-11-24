@@ -1,6 +1,6 @@
 # Development and delivery
 
-The code has a shared internal library in `src/core` and runnable agents under `src/agents/<name>`. The first agent is a one-shot pi-durable example: it sends the prompt `Reply with exactly: Hello world!` to LiteLLM using hardcoded model ID `qwen3.8-27b`, prints the model response, and closes the harness. It uses in-memory storage, so conversations do not survive process exit. A2A communication remains a future capability.
+Shared A2A server code lives in `src/core/a2a/`. Each agent provides its card metadata and request handler under `src/agents/<name>/`. The hello-world agent generates a greeting in a fresh pi-durable conversation for each request.
 
 ## Development
 
@@ -14,7 +14,7 @@ chmod 600 .env
 pnpm dev
 ```
 
-`pnpm dev` loads the optional `.env` from the repository root. Existing environment variables take precedence. `pnpm start` reads injected environment variables; it does not load `.env`. Set `LITELLM_BASE_URL` to the OpenAI-compatible API base URL (for example `https://litellm.example.com/v1`) and `LITELLM_API_KEY` to a LiteLLM key. The model ID is hardcoded to `qwen3.8-27b`; there is no model environment variable. A run allows up to 128 output tokens and a 30-second request timeout, with retries disabled.
+`pnpm dev` loads the optional `.env` from the repository root. Existing environment variables take precedence. `pnpm start` reads injected environment variables; it does not load `.env`. Set `LITELLM_BASE_URL` to the OpenAI-compatible API base URL (for example `https://litellm.example.com/v1`) and `LITELLM_API_KEY` to a LiteLLM key. The model ID is hardcoded to `qwen3.8-27b`; there is no model environment variable. A greeting allows up to 128 output tokens and a 30-second request timeout, with retries disabled.
 
 To run the production build:
 
@@ -35,13 +35,13 @@ node --env-file=.env dist/agents/hello-world/index.js
 | `pnpm check:infra`     | Validate workflows and agent Dockerfiles with pinned linter containers |
 | `pnpm check:container` | Build and smoke-test the local container                               |
 
-The smoke tests launch the compiled application against a local mock of LiteLLM, including streamed text, `.env` loading, invalid configuration, and provider rejection. They use synthetic credentials and never call the configured live provider. The container check runs the same mock and agent inside the image with external networking disabled.
+The smoke tests launch the compiled application, discover its card, and invoke it over A2A against a local mock of LiteLLM. They cover concurrent greetings, invalid requests and configuration, provider rejection and recovery, `.env` loading, and shutdown. The container check runs the same fixture inside the image with external networking disabled.
 
 To run the container against LiteLLM, supply credentials at runtime:
 
 ```sh
 docker build --file src/agents/hello-world/Dockerfile --tag cloud-colony-hello-world-agent:local .
-docker run --rm --name cloud-colony-hello-world-agent-1 --env-file .env cloud-colony-hello-world-agent:local
+docker run --rm -p 127.0.0.1:8080:8080 --env-file .env cloud-colony-hello-world-agent:local
 ```
 
 Each container starts one agent process. Use a different container name for each concurrent instance. Set `LITELLM_BASE_URL` to an endpoint reachable from that container. If LiteLLM runs on the Mac host, use `host.docker.internal` in place of `localhost`.
@@ -67,32 +67,50 @@ The agent validates both values before making requests to LiteLLM. It reports pr
 
 `pnpm start` and the production container read only the environment provided at startup. They do not load `.env`. For a local container test, Docker can supply the file explicitly with `docker run --env-file .env <image>`.
 
-Run hello-world as a Kubernetes Job because it exits after one request. Use a Deployment for agents designed to run continuously. Put non-secret settings in a ConfigMap:
+## A2A service
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: cloud-colony-config
-data:
-  LITELLM_BASE_URL: https://litellm.example.com/v1
+`PORT` defaults to `8080`. The card advertises `http://127.0.0.1:<port>/` by default. Set `A2A_BASE_URL` to the HTTP or HTTPS origin reachable by callers when the agent runs behind a Service or a port mapping. The HTTP listener binds to all container interfaces.
+
+```sh
+curl -fsS http://127.0.0.1:8080/.well-known/agent-card.json
+curl -fsS http://127.0.0.1:8080/ \
+  -H 'Content-Type: application/json' \
+  -H 'A2A-Version: 1.0' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"SendMessage","params":{"message":{"messageId":"greeting-1","role":"ROLE_USER","parts":[{"text":"Hello"}]}}}'
 ```
 
-Use these entries in the future workload's container specification:
+The response contains a greeting in `result.message.parts`. A model failure returns a JSON-RPC error. Greeting requests leave no task history. Both `/healthz` and `/readyz` report HTTP availability without calling the model. SIGTERM and SIGINT stop the listener and drain active HTTP requests.
+
+## Sisyphus rollout
+
+When deploying, run the published image by digest in a one-replica Deployment behind a private ClusterIP Service on port 8080. Set `A2A_BASE_URL` to that Service's origin, use the two HTTP probes, and allow at least 40 seconds for termination. Set `LITELLM_BASE_URL` to `http://litellm.litellm.svc.cluster.local:4000/v1` and inject a dedicated model-scoped `LITELLM_API_KEY` from a SOPS-managed Secret.
+
+Allow LiteLLM egress to the agent and agent ingress from LiteLLM on TCP 8080. Allow agent egress to LiteLLM and LiteLLM ingress from the agent on TCP 4000, as well as agent egress to cluster DNS. Keep the agent Service private because the local A2A listener relies on the network boundary. Clients authenticate at LiteLLM.
+
+In the LiteLLM HelmRelease, add the following under `values.proxy_config`. This example assumes a Service named `hello-world` in the `cloud-colony` namespace.
 
 ```yaml
-envFrom:
-  - configMapRef:
-      name: cloud-colony-config
-env:
-  - name: LITELLM_API_KEY
-    valueFrom:
-      secretKeyRef:
-        name: cloud-colony-litellm
-        key: api-key
+agents:
+  - agent_name: hello-world
+    agent_card_params:
+      name: Hello World
+      description: Returns a model-generated hello-world greeting.
+      url: http://hello-world.cloud-colony.svc.cluster.local:8080/
+      protocolVersion: "1.0"
+      version: "1.0.0"
+      capabilities:
+        streaming: false
+      defaultInputModes: [text/plain]
+      defaultOutputModes: [text/plain]
+      skills:
+        - id: greet
+          name: Greet
+          description: Send a text message to receive a greeting.
+          tags: [greeting]
+          examples: [Hello]
 ```
 
-Create `cloud-colony-litellm` through your secret-management workflow. The API key belongs in a Secret, while the endpoint belongs in the ConfigMap. Kubernetes injects both into the process environment; the application does not call the Kubernetes API or read YAML. Restart or roll out the workload when those environment-backed values change. These are configuration examples, not a deployed workload.
+Verify the agent through `GET /v1/agents` and `GET /a2a/hello-world/.well-known/agent-card.json` on `https://ai.noel.fyi`. Check that the card advertises the public HTTPS gateway URL, that a permitted virtual key receives a greeting there, and that a restricted key without the agent grant is denied. Review existing unrestricted keys before onboarding the agent.
 
 ## Containers and releases
 

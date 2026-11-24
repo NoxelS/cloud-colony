@@ -1,6 +1,6 @@
 # cloud-colony
 
-A foundation for self-hosted cloud agents. Shared internal code lives in `src/core`; each runnable agent has its own entrypoint under `src/agents/`. The first example uses pi-durable and LiteLLM to submit one hello-world prompt, print the model response, and exit. It uses in-memory storage; conversations do not survive process exit.
+A foundation for self-hosted cloud agents. Shared internal code lives in `src/core`; each runnable agent has its own entrypoint under `src/agents/`. The hello-world agent serves an Agent2Agent (A2A) 1.0 endpoint and generates greetings through pi-durable and LiteLLM.
 
 ## Installation
 
@@ -14,7 +14,7 @@ chmod 600 .env
 pnpm dev
 ```
 
-The model is hardcoded to `qwen3.8-27b`, the ID registered with LiteLLM. Each run prints the model response and exits. The harness uses in-memory storage.
+The server listens on port 8080 by default. Discover it at `GET /.well-known/agent-card.json` and send an A2A `SendMessage` to the JSON-RPC URL advertised by the card. Each greeting uses a fresh in-memory conversation with the LiteLLM model `qwen3.8-27b`.
 
 `pnpm start` runs the compiled agent at `dist/agents/hello-world/index.js`; it reads injected environment variables and never loads `.env`. The image is `ghcr.io/noxels/cloud-colony`, built specifically for the `hello-world` agent.
 

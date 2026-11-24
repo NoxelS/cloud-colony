@@ -6,7 +6,7 @@ import { expect, it } from "vitest";
 const root = fileURLToPath(new URL("../", import.meta.url));
 
 it.each(["success", "dotenv", "reject"])(
-  "runs the compiled agent with a mock LiteLLM endpoint: %s",
+  "serves A2A requests with a mock LiteLLM endpoint: %s",
   async (mode) => {
     const result = await promisify(execFile)(
       process.execPath,
@@ -14,11 +14,10 @@ it.each(["success", "dotenv", "reject"])(
       {
         cwd: root,
         encoding: "utf8",
-        timeout: 8_000,
+        timeout: 10_000,
       },
     );
     expect(result.stderr).toBe("");
-    expect(result.stdout).toBe(mode === "reject" ? "" : "Hello world!\n");
   },
 );
 

@@ -25,11 +25,12 @@ USER 1000:1000
 FROM agent-base AS runtime
 ARG VCS_REF=unknown
 LABEL org.opencontainers.image.title="cloud-colony hello-world agent" \
-    org.opencontainers.image.description="Hello-world agent using pi-durable and LiteLLM" \
+    org.opencontainers.image.description="Hello-world A2A agent using pi-durable and LiteLLM" \
     org.opencontainers.image.source="https://github.com/NoxelS/cloud-colony" \
     org.opencontainers.image.revision="${VCS_REF}"
 COPY --from=build /app/dist/core ./dist/core
 COPY --from=build /app/dist/agents/hello-world ./dist/agents/hello-world
 COPY --from=build /app/node_modules ./node_modules
 COPY package.json ./package.json
+EXPOSE 8080
 CMD ["node", "dist/agents/hello-world/index.js"]
