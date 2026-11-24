@@ -79,8 +79,12 @@ Agents must run formatting and the applicable checks as part of an authorized ch
    ```
 
 7. Review `git diff`, run `git diff --check`, and inspect `git status` before staging explicit paths. For documentation-only edits, use Biome on the edited documentation, verify its commands and links, and check the diff; application builds and tests are unnecessary locally.
+## Tests
 
 VS Code's recommended Biome extension applies formatting and safe fixes on save for the configured languages. Agents must still run the command-line checks; editor automation and a running `pnpm dev` process do not prove validation passed.
+- Make tests readable to humans: use clear names, focused setup, and assertions that show expected consumer-visible behavior.
+- Follow existing test conventions; cover meaningful success, boundary, and failure cases based on contract and risk, not implementation details.
+- Keep tests isolated and deterministic. Avoid fixed sleeps and production services; mock only external or unsafe boundaries when needed.
 
 ## Dependencies
 
