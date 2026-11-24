@@ -14,7 +14,8 @@ RUN pnpm build && pnpm prune --prod
 
 FROM base AS agent-base
 # Package managers are build tools; the runtime executes compiled JavaScript.
-RUN rm -rf /usr/local/lib/node_modules /opt/yarn-* \
+RUN dpkg --purge apt libapt-pkg6.0 \
+    && rm -rf /usr/local/lib/node_modules /opt/yarn-* \
     /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
     /usr/local/bin/pnpm /usr/local/bin/pnpx /usr/local/bin/yarn /usr/local/bin/yarnpkg
 ENV NODE_ENV=production

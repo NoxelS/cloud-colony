@@ -40,7 +40,7 @@ The smoke tests launch the compiled application against a local mock of LiteLLM,
 To run the container against LiteLLM, supply credentials at runtime:
 
 ```sh
-docker build --tag cloud-colony-hello-world-agent:local .
+docker build --file src/agents/hello-world/Dockerfile --tag cloud-colony-hello-world-agent:local .
 docker run --rm --name cloud-colony-hello-world-agent-1 --env-file .env cloud-colony-hello-world-agent:local
 ```
 
@@ -96,7 +96,7 @@ Create `cloud-colony-litellm` through your secret-management workflow. The API k
 
 ## Containers and releases
 
-Pull requests run the application checks, infrastructure linting, and container builds, smoke tests, and vulnerability scans for `linux/amd64` and `linux/arm64`. Successful `main` runs publish the tested images as a multi-architecture image:
+CI discovers agents under `src/agents/`. Each agent has its own job that builds, smoke-tests, and vulnerability scans the `linux/amd64` and `linux/arm64` images. On `main`, the same job pushes both tested images and creates a multi-architecture tag. The hello-world image uses:
 
 ```text
 ghcr.io/noxels/cloud-colony:sha-<full-commit-sha>

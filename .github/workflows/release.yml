@@ -20,6 +20,7 @@ jobs:
       actions: read
     outputs:
       sha: ${{ steps.source.outputs.sha }}
+      agents: ${{ steps.agents.outputs.list }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -37,6 +38,14 @@ jobs:
           sha="$(git rev-parse HEAD)"
           git merge-base --is-ancestor "$sha" origin/main
           printf 'sha=%s\n' "$sha" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - name: Discover agents
+        id: agents
+        run: |
+          agents="$(node scripts/list-agents.mjs)"
+          printf 'list=%s\n' "$agents" >> "$GITHUB_OUTPUT"
       - name: Wait for successful main CI and publication
         env:
           GH_TOKEN: ${{ github.token }}
@@ -51,22 +60,16 @@ jobs:
           echo '::error::No successful main CI run published this commit within five minutes.'
           exit 1
 
-  promote:
-    name: Promote ${{ matrix.agent }} image
+  release:
+    name: Promote images and create GitHub release
     needs: source
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
-      contents: read
+      contents: write
       packages: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - agent: hello-world
-            image: ghcr.io/noxels/cloud-colony
     steps:
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451d9637bfbc97413f497069 # v4.4.1
         with:
           version: v0.38.1
           driver-opts: image=moby/buildkit:v0.34.1@sha256:99368f3e46177c6405b9740e4461d91cee004128daeecca78d4ceac50ec1da5c
@@ -75,46 +78,32 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Promote the existing digest
+      - name: Promote the existing commit digests
         env:
-          IMAGE: ${{ matrix.image }}
+          AGENTS: ${{ needs.source.outputs.agents }}
           RELEASE_SHA: ${{ needs.source.outputs.sha }}
           RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
         run: |
-          source="$IMAGE:sha-$RELEASE_SHA"
-          target="$IMAGE:$RELEASE_TAG"
-          digest="$(docker buildx imagetools inspect "$source" --format '{{json .Manifest}}' | jq -er '.digest')"
-          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
-          if existing="$(docker buildx imagetools inspect "$target" --format '{{json .Manifest}}' 2>/dev/null | jq -er '.digest')"; then
-            if [ "$existing" != "$digest" ]; then
-              echo '::error::This release version already points to a different image.'
-              exit 1
+          images="$(jq -er '.[].image' <<< "$AGENTS")"
+          while IFS= read -r image; do
+            source="$image:sha-$RELEASE_SHA"
+            target="$image:$RELEASE_TAG"
+            digest="$(docker buildx imagetools inspect "$source" --format '{{json .Manifest}}' | jq -er '.digest')"
+            [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+            if existing="$(docker buildx imagetools inspect "$target" --format '{{json .Manifest}}' 2>/dev/null | jq -er '.digest')"; then
+              if [ "$existing" != "$digest" ]; then
+                echo "::error::$target already points to a different image."
+                exit 1
+              fi
+            else
+              docker buildx imagetools create --tag "$target" "$image@$digest"
             fi
-          fi
-          docker buildx imagetools create --tag "$target" "$IMAGE@$digest"
-          promoted="$(docker buildx imagetools inspect "$target" --format '{{json .Manifest}}' | jq -er '.digest')"
-          test "$promoted" = "$digest"
-          printf 'Container: %s:%s\nDigest: %s@%s\n' "$IMAGE" "$RELEASE_TAG" "$IMAGE" "$digest" > "$RUNNER_TEMP/${{ matrix.agent }}.txt"
-          echo "Released $IMAGE@$digest as $target."
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: release-${{ matrix.agent }}
-          path: ${{ runner.temp }}/${{ matrix.agent }}.txt
-          retention-days: 3
-
-  release:
-    name: Create coordinated GitHub release
-    needs: [source, promote]
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-      actions: read
-    steps:
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          pattern: release-*
-          merge-multiple: true
-          path: ${{ runner.temp }}/images
+            promoted="$(docker buildx imagetools inspect "$target" --format '{{json .Manifest}}' | jq -er '.digest')"
+            test "$promoted" = "$digest"
+            printf 'Container: %s\nDigest: %s@%s\n\n' "$target" "$image" "$digest" >> "$RUNNER_TEMP/release-notes.md"
+            echo "Released $image@$digest as $target."
+          done <<< "$images"
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -125,5 +114,4 @@ jobs:
             echo 'GitHub release already exists; promoted image digests were verified.'
             exit 0
           fi
-          cat "$RUNNER_TEMP"/images/*.txt > "$RUNNER_TEMP/release-notes.md"
           gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --target "$RELEASE_SHA" --title "$RELEASE_TAG" --generate-notes --notes-file "$RUNNER_TEMP/release-notes.md"

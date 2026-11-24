@@ -10,7 +10,7 @@ it.each(["success", "dotenv", "reject"])(
   async (mode) => {
     const result = await promisify(execFile)(
       process.execPath,
-      ["tests/fixtures/run-agent.mjs", mode],
+      ["tests/fixtures/hello-world.mjs", mode],
       {
         cwd: root,
         encoding: "utf8",
