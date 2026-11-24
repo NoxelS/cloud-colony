@@ -113,7 +113,7 @@ docker build --target agent-base -t cloud-colony-agent-base:local .
 docker build -t cloud-colony:local .
 ```
 
-Install [OpenShell v0.1.10](https://docs.nvidia.com/openshell/v0.1.10/about/installation) and use a local Docker driver with Docker Engine 28 or later. Check `openshell status` and `openshell gateway info` before creating sandboxes. For the first sandbox, create a fresh local gateway or confirm that any existing gateway and its policy are safe to use; do not change a shared gateway's global policy.
+Install [OpenShell v0.1.10](https://docs.nvidia.com/openshell/v0.1.10/about/installation) and use a local Docker driver with Docker Engine 28 or later. Check `openshell status` and `openshell gateway info` before creating sandboxes. For the first sandbox, create a fresh local gateway or confirm that any existing gateway and its policy are safe to use; do not change a shared gateway's global policy. On Docker Desktop, OpenShell's default supervisor networking uses host mode, which requires host networking to be enabled. Otherwise configure `supervisor_network_mode = "bridge"` under `[openshell.drivers.docker]` in that gateway's TOML and restart it; the workload itself remains network-isolated.
 
 In one terminal, start a retained sandbox with its default interactive shell:
 
@@ -121,7 +121,7 @@ In one terminal, start a retained sandbox with its default interactive shell:
 openshell sandbox create --name cloud-colony-check --from cloud-colony:local
 ```
 
-In a second terminal, inspect the effective policy. The default policy is restrictive, but global policy and attached providers can add permissions; verify both payloads before interpreting a network test:
+In a second terminal, inspect the effective policy. The default policy is restrictive, but global or image policy and attached providers can add permissions; verify both payloads before interpreting a network test:
 
 ```sh
 openshell policy get cloud-colony-check --base
