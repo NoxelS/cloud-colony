@@ -12,13 +12,6 @@
 - When the user asks a question, answer it first before making edits or running implementation commands.
 - When responding to user feedback or an analysis, explicitly say whether you agree or disagree before saying what you changed.
 
-## Repository Scope
-
-- Read `README.md`, `CONTRIBUTING.md`, and the relevant configuration before making changes. Inspect complete files before editing them.
-- The application has a shared internal library in `src/core` and runnable agents under `src/agents/<name>`. The first agent is a one-shot pi-durable hello-world example using LiteLLM inference.
-- A2A communication, OpenShell governance, and Kubernetes deployment remain future capabilities; implement them only when requested.
-- Keep one private package. Add shared core APIs only for concrete reuse; do not introduce speculative frameworks, empty package trees, or unused dependencies.
-
 ## Implementation
 
 - Use the Node version in `.node-version` and pnpm version in `package.json`. Keep the Dockerfile and package engine constraints consistent with those pins.
@@ -52,36 +45,13 @@ Run commands from the repository root. Docker must be available for infrastructu
 
 ## Development Workflow
 
-Agents must run formatting and the applicable checks as part of an authorized change, without waiting for a separate request to lint or test.
-1. Confirm the pinned Node and pnpm versions and inspect `git status`. Run `pnpm install --frozen-lockfile` when setting up a checkout or when dependencies change.
-2. Make a small change. Use `pnpm dev` when source watching helps; it does not replace type checking or tests.
-3. Apply Biome's formatting, import organization, and safe lint fixes to edited files. For example:
+- Use test-driven development for behavior changes: identify the consumer-visible contract, write a focused test that fails because the behavior is missing, and run it to confirm the expected failure before implementation.
+- Implement the smallest change that makes the test pass, then rerun that test and any directly relevant checks.
+- Cover representative success, boundary, and failure cases when they matter to the contract; keep tests deterministic and independent of external credentials.
+- Follow existing test conventions and assert observable outcomes, not implementation details. Do not add tests for trivial changes or require tests where no meaningful behavior changes.
 
-   ```sh
-   pnpm exec biome check --write src/agents/hello-world/index.ts
-   ```
-
-   Pass the actual files you edited. For a repository-wide change, `pnpm format` applies the same fixes across the repository. Inspect the resulting diff and keep unrelated changes out of the task. Do not use `--unsafe` to clear diagnostics; resolve remaining issues deliberately.
-4. Run affected tests while iterating. The current smoke test executes compiled JavaScript, so build before a focused run:
-
-   ```sh
-   pnpm build
-   pnpm exec vitest run tests/smoke.test.ts
-   ```
-
-   Rebuild after source changes so a passing smoke test cannot come from stale `dist/` output.
-5. Before committing code, tests, or tooling configuration, run `pnpm check`. It checks Biome without modifying files, checks types, builds, and runs the full local test suite. A successful run already covers `pnpm build` and `pnpm test`; do not repeat them unnecessarily. Fix failures and rerun affected checks until they pass.
-6. For infrastructure changes, also run `pnpm check:infra` and the affected container checks. Docker/runtime changes should exercise both supported platforms:
-
-   ```sh
-   pnpm check:container --platform linux/amd64
-   pnpm check:container --platform linux/arm64
-   ```
-
-7. Review `git diff`, run `git diff --check`, and inspect `git status` before staging explicit paths. For documentation-only edits, use Biome on the edited documentation, verify its commands and links, and check the diff; application builds and tests are unnecessary locally.
 ## Tests
 
-VS Code's recommended Biome extension applies formatting and safe fixes on save for the configured languages. Agents must still run the command-line checks; editor automation and a running `pnpm dev` process do not prove validation passed.
 - Make tests readable to humans: use clear names, focused setup, and assertions that show expected consumer-visible behavior.
 - Follow existing test conventions; cover meaningful success, boundary, and failure cases based on contract and risk, not implementation details.
 - Keep tests isolated and deterministic. Avoid fixed sleeps and production services; mock only external or unsafe boundaries when needed.
@@ -93,14 +63,6 @@ VS Code's recommended Biome extension applies formatting and safe fixes on save 
 - pnpm settings live in `pnpm-workspace.yaml`; it currently configures only the root package. Review lifecycle scripts before adding `allowBuilds` entries. Preserve the explicit allowlist rather than enabling every dependency's scripts.
 - Check Renovate coverage when adding pins, including Docker digests, Action SHAs, and tool versions embedded in configuration.
 
-## Containers and CI/CD
-
-- Keep the runtime image non-root and limited to compiled application files and required runtime dependencies. Build tools belong in the build stage.
-- Preserve AMD64 and ARM64 smoke tests, the fixable high/critical vulnerability gate, and the aggregate `ci` check.
-- PR jobs validate changes with read-only repository permissions. Registry writes and attestations belong to trusted main-branch publishing jobs.
-- Publish the tested image artifacts. Semantic release tags promote the existing commit image digest; they must not silently rebuild it or overwrite a different released digest.
-- Follow `CONTRIBUTING.md` for releases. Creating a release tag, merging, publishing, or deploying requires authorization for that action; a request to update a PR already authorizes its necessary commit and push.
-
 ## Git and Pull Requests
 
 - Other agents may share the worktree. Preserve their changes and limit commits to the files owned by the current task.
@@ -108,6 +70,7 @@ VS Code's recommended Biome extension applies formatting and safe fixes on save 
 - Prefer updating the task's existing branch and PR. Review other PRs through diffs and refs without switching the user's checkout.
 - Describe the final behavior and relevant checks in the PR. Use structured API arguments or a temporary body file for multiline descriptions.
 - Container publication, repository settings, and hosted-service activation need separate verification; a configuration file or successful local test does not prove they ran.
+- Use conventional commit messages.
 
 ## AGENTS.md File
 
