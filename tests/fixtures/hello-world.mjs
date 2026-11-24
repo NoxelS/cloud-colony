@@ -11,7 +11,28 @@ const mode = process.argv[2] ?? "success";
 const entrypoint = resolve("dist/agents/hello-world/index.js");
 const apiKey = "smoke-test-key";
 let requests = 0;
+const traceSpans = [];
+const { promise: exported, resolve: finishExport } = Promise.withResolvers();
 const server = createServer(async (request, response) => {
+  if (mode === "trace" && request.url === "/v1/traces") {
+    assert.equal(request.method, "POST");
+    assert.equal(request.headers.authorization, "Bearer smoke-test-tracing-key");
+    let body = "";
+    for await (const chunk of request) body += chunk;
+    const payload = JSON.parse(body);
+    const spans = payload.resourceSpans.flatMap(({ scopeSpans }) =>
+      scopeSpans.flatMap(({ spans }) => spans),
+    );
+    traceSpans.push(...spans);
+    if (
+      traceSpans.filter(({ name }) => name === "hello-world").length === 2 &&
+      traceSpans.filter(({ name }) => name === "pi.ai.request").length === 2
+    ) {
+      finishExport();
+    }
+    response.end("{}");
+    return;
+  }
   requests += 1;
   assert.equal(request.method, "POST");
   assert.equal(request.url, "/v1/chat/completions");
@@ -69,6 +90,10 @@ const env = {
   LITELLM_BASE_URL: baseUrl,
   LITELLM_API_KEY: apiKey,
   LITELLM_MODEL: "must-not-override-the-hardcoded-model",
+  ...(mode === "trace" && {
+    LENS_OTLP_ENDPOINT: `${baseUrl}/traces`,
+    LITELLM_TRACING_KEY: "smoke-test-tracing-key",
+  }),
 };
 const advertisedUrl = "http://hello-world.example.test:8080/";
 let directory;
@@ -179,6 +204,31 @@ try {
       }
       assert.notEqual(replies[0].result.message.messageId, replies[1].result.message.messageId);
       assert.equal(requests, mode === "reject" ? 3 : 2);
+    }
+    if (mode === "trace") {
+      await Promise.race([
+        exported,
+        exited.then(() => assert.fail("Agent exited before exporting both greeting traces")),
+      ]);
+      const roots = traceSpans.filter(({ name }) => name === "hello-world");
+      const modelSpans = traceSpans.filter(({ name }) => name === "pi.ai.request");
+      assert.notEqual(roots[0].traceId, roots[1].traceId);
+      for (const root of roots) {
+        const spans = traceSpans.filter(({ traceId }) => traceId === root.traceId);
+        assert.deepEqual(spans.map(({ name }) => name).sort(), ["hello-world", "pi.ai.request"]);
+        const models = modelSpans.filter(({ traceId }) => traceId === root.traceId);
+        assert.equal(models.length, 1, "Each greeting trace includes its model request");
+        assert.equal(models[0].parentSpanId, root.spanId);
+        const output = root.attributes.find(({ key }) => key === "gen_ai.output.messages");
+        assert.deepEqual(JSON.parse(output.value.stringValue), [
+          { role: "assistant", parts: [{ type: "text", content: "Hello world!" }] },
+        ]);
+        assert.ok(
+          models[0].attributes.some(
+            ({ key, value }) => key === "gen_ai.operation.name" && value.stringValue === "chat",
+          ),
+        );
+      }
     }
     child.kill("SIGTERM");
     assert.deepEqual(await exited, [0, null]);
